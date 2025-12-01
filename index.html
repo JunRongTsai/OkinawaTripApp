@@ -41,13 +41,13 @@
         // 2. 填入您在 Firebase Console 獲取的 Web App 設定 (最新版)
         const FIREBASE_CONFIG_FOR_NETLIFY = {
              // 此處為您提供的最新、最正確的 API Key
-              apiKey: "AIzaSyDc7dkeG9RJcmyuNv2ZYDZEtkTUwNWAYek",
-			  authDomain: "travelapp-b382d.firebaseapp.com",
-			  projectId: "travelapp-b382d",
-			  storageBucket: "travelapp-b382d.firebasestorage.app",
-			  messagingSenderId: "579137022414",
-			  appId: "1:579137022414:web:890bcdc6ffa6e25f5da39f",
-			  measurementId: "G-T0YDHHG7DN"
+             apiKey: "AIzaSyDc7dkeG9RJcmyuNv2ZYDZEtkTUwNWAYek",
+             authDomain: "travelapp-b382d.firebaseapp.com",
+             projectId: "travelapp-b382d",
+             storageBucket: "travelapp-b382d.firebasestorage.app",
+             messagingSenderId: "579137022414",
+             appId: "1:579137022414:web:890bcdc6ffa6e25f5da39f",
+             measurementId: "G-T0YDHHG7DN"
         };
         
         // 在 Netlify 環境中，直接使用硬編碼的配置
@@ -59,6 +59,7 @@
         let firebaseReady = false;
         if (firebaseConfig.apiKey === "YOUR_API_KEY_HERE" || !firebaseConfig.apiKey) {
             console.error("FIREBASE CONFIG ERROR: Missing API key.");
+            // 設定 Dummy Objects 避免後續 function 拋出 undefined 錯誤
             window.db = {}; 
             window.auth = { currentUser: { uid: 'placeholder-uid' } };
             window.appId = appId;
@@ -84,21 +85,19 @@
             }
             
             try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                    console.log("Firebase: Signed in with custom token.");
-                } else {
-                    await signInAnonymously(auth);
-                    console.log("Firebase: Signed in anonymously.");
-                }
+                // 使用匿名登入
+                await signInAnonymously(auth);
+                console.log("Firebase: Signed in anonymously.");
 
                 const userId = auth.currentUser?.uid || crypto.randomUUID();
                 window.userId = userId;
 
+                // 狀態變更時標記認證完成
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         console.log("Auth State Ready. Current User ID:", user.uid);
                         window.isAuthReady = true; 
+                        // 如果在 PLAN 頁面，認證完成後重新渲染
                         if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
                             switchTab('plan'); 
                         }
@@ -109,14 +108,11 @@
 
             } catch (error) {
                 console.error("Firebase Auth Error:", error);
-                // 檢查是否是常見的 API KEY 或網域問題，並設置更明確的錯誤碼
-                if (error.code === 'auth/api-key-not-valid' || error.code === 'auth/network-request-failed') {
-                    window.authError = { code: error.code, message: "請檢查 API Key、Project ID 或 Netlify 網域授權。" };
-                } else {
-                    window.authError = { code: error.code, message: error.message };
-                }
+                // 捕獲錯誤並設置明確的錯誤碼
+                window.authError = { code: error.code, message: error.message };
                 
                 window.isAuthReady = true; 
+                // 即使失敗，也要重新渲染 PLAN 頁面以顯示錯誤提示
                 if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
                     switchTab('plan'); 
                 }
@@ -237,7 +233,7 @@
         </div>
     </div>
     
-    <!-- 地圖 Modal 結構 (已移除 iframe，簡化為彈窗提示) -->
+    <!-- 地圖 Modal 結構 (已簡化為彈窗提示) -->
     <div id="map-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 transition-opacity duration-300 opacity-0 hidden">
         <div class="bg-card w-full max-w-sm rounded-xl shadow-2xl p-6 transform scale-95 transition-transform duration-300">
             <h3 id="map-modal-title" class="text-xl font-bold primary-text mb-4 border-b pb-2">地點地圖</h3>
@@ -594,9 +590,15 @@
                                     </p>
                                     ${event.location ? `
                                         <div class="mt-2 space-x-2">
-                                            <a href="javascript:void(0)" onclick="showMapModal('${event.location}', '行程地點: ${event.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
-                                                <i class="fa-solid fa-map-marker-alt mr-1"></i> Google Maps (預覽)
-                                            </a>
+                                            <!-- 點擊後開啟 Modal 提示，導向地圖 App -->
+                                            <button onclick="showMapModal('${event.location}', '行程地點: ${event.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
+                                                <i class="fa-solid fa-map-marker-alt mr-1"></i> Google Maps (導航)
+                                            </button>
+                                            ${event.type === 'food' ? `
+                                                <a href="https://www.google.com/search?q=${encodeURIComponent(event.name + ' 食記 推薦')}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 secondary-bg text-white rounded-full transition duration-300 hover:opacity-80">
+                                                    <i class="fa-solid fa-book-open mr-1"></i> 查看食記
+                                                </a>
+                                            ` : ''}
                                         </div>
                                     ` : ''}
                                 </div>
@@ -630,54 +632,355 @@
         }
     }
 
-    // ================= PLAN - Firestore 寫入/修改邏輯 (略) =================
+    // ================= PLAN - Firestore 寫入/修改邏輯 (CRUD Functions) =================
 
-    // 由於這段代碼保持不變且篇幅過長，這裡省略以避免重複。
-    // ... addDayToFirestore, updateDayInFirestore, deleteDayFromFirestore, addEventToDay, updateEventInDay, deleteEventInDay ...
+    async function addDayToFirestore(day, date, order) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) return;
 
-    // ================= PLAN - 模態框 (Modal) 邏輯 (略) =================
+        showLoading('正在新增行程日...');
 
-    // ... createModal, closeModal, showAddDayModal, showEditDayModal, confirmDeleteDay, showAddEventModal, showEditEventModal, confirmDeleteEvent ...
+        try {
+            const newDay = {
+                day: day,
+                date: date,
+                order: parseInt(order),
+                events: []
+            };
+            // 使用 addDoc 讓 Firestore 自動生成 Doc ID
+            await firebaseModules.addDoc(itineraryRef, newDay);
+            alertMessage('行程日新增成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error adding document:", e);
+            alertMessage('新增失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function updateDayInFirestore(docId, day, date, order) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) return;
+
+        showLoading('正在更新行程日資訊...');
+
+        try {
+            const dayRef = firebaseModules.doc(itineraryRef, docId);
+            await firebaseModules.updateDoc(dayRef, {
+                day: day,
+                date: date,
+                order: parseInt(order)
+            });
+            alertMessage('行程日更新成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error updating document:", e);
+            alertMessage('更新失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function deleteDayFromFirestore(docId) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) return;
+
+        showLoading('正在刪除行程日...');
+
+        try {
+            const dayRef = firebaseModules.doc(itineraryRef, docId);
+            await firebaseModules.deleteDoc(dayRef);
+            alertMessage('行程日刪除成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error deleting document:", e);
+            alertMessage('刪除失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function addEventToDay(docId, eventData) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay) return;
+
+        showLoading('正在新增活動...');
+        const updatedEvents = [...(currentDay.events || []), eventData];
+        updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
+
+        try {
+            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
+                events: updatedEvents
+            });
+            alertMessage('活動新增成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error adding event:", e);
+            alertMessage('新增失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function updateEventInDay(docId, eventIndex, eventData) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay) return;
+
+        showLoading('正在更新活動...');
+        const updatedEvents = [...(currentDay.events || [])];
+        updatedEvents[eventIndex] = eventData;
+        updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
+
+        try {
+            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
+                events: updatedEvents
+            });
+            alertMessage('活動更新成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error updating event:", e);
+            alertMessage('更新失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function deleteEventFromDay(docId, eventIndex) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay) return;
+
+        showLoading('正在刪除活動...');
+        const updatedEvents = (currentDay.events || []).filter((_, index) => index !== eventIndex);
+
+        try {
+            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
+                events: updatedEvents
+            });
+            alertMessage('活動刪除成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error deleting event:", e);
+            alertMessage('刪除失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+
+    // ================= PLAN - 模態框 (Modal) 邏輯 =================
+
+    // 泛用模態框 HTML 結構
+    function createModal(id, title, bodyHtml, confirmText, onConfirm, cancelText = '取消') {
+        const existing = document.getElementById(id);
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = id;
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4 transition-opacity duration-300';
+        modal.innerHTML = `
+            <div class="bg-card w-full max-w-sm rounded-xl shadow-2xl p-6 transform scale-95 transition-transform duration-300">
+                <h3 class="text-xl font-bold primary-text mb-4 border-b pb-2">${title}</h3>
+                <div id="${id}-body">${bodyHtml}</div>
+                <div class="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                    <button onclick="closeModal('${id}')" class="text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">${cancelText}</button>
+                    <button id="${id}-confirm" class="primary-bg text-white px-4 py-2 rounded-lg font-bold hover:opacity-90">${confirmText}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // 設置確認按鈕事件
+        document.getElementById(`${id}-confirm`).onclick = onConfirm;
+
+        // 顯示動畫
+        setTimeout(() => modal.classList.add('opacity-100'), 10);
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.classList.remove('opacity-100');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.remove(), 300);
+        }
+    }
+
+    function showAddDayModal() {
+        const lastDayOrder = cloudItineraryData.length > 0 ? Math.max(...cloudItineraryData.map(d => d.order)) : 0;
+        const nextOrder = lastDayOrder + 1;
+        const body = `
+            <div class="space-y-3">
+                <input type="text" id="modal-day-name" placeholder="例如: D6 (自由活動)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="text" id="modal-day-date" placeholder="例如: 03/12 (四)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="number" id="modal-day-order" value="${nextOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
+            </div>
+        `;
+
+        createModal('add-day-modal', '新增行程日', body, '確認新增', () => {
+            const day = document.getElementById('modal-day-name').value;
+            const date = document.getElementById('modal-day-date').value;
+            const order = document.getElementById('modal-day-order').value;
+            if (day && date && order) {
+                addDayToFirestore(day, date, order);
+                closeModal('add-day-modal');
+            } else {
+                alertMessage('請填寫完整資訊！', 'secondary-bg');
+            }
+        });
+    }
+
+    function showEditDayModal(docId, currentDay, currentDate, currentOrder) {
+        const body = `
+            <div class="space-y-3">
+                <label class="text-xs text-gray-500">行程日名稱 (例如: D1)</label>
+                <input type="text" id="modal-day-name" value="${currentDay}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">日期 (例如: 03/07 (六))</label>
+                <input type="text" id="modal-day-date" value="${currentDate}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">排序 (數字越小越前面)</label>
+                <input type="number" id="modal-day-order" value="${currentOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
+            </div>
+        `;
+
+        createModal('edit-day-modal', '編輯行程日資訊', body, '儲存變更', () => {
+            const day = document.getElementById('modal-day-name').value;
+            const date = document.getElementById('modal-day-date').value;
+            const order = document.getElementById('modal-day-order').value;
+            if (day && date && order) {
+                updateDayInFirestore(docId, day, date, order);
+                closeModal('edit-day-modal');
+            } else {
+                alertMessage('請填寫完整資訊！', 'secondary-bg');
+            }
+        });
+    }
+
+    function confirmDeleteDay(docId, dayName) {
+        const body = `<p>您確定要刪除 **${dayName}** 這一天的所有行程嗎？此操作無法復原。</p>`;
+        createModal('confirm-delete-day-modal', '確認刪除行程日', body, '確定刪除', () => {
+            deleteDayFromFirestore(docId);
+            closeModal('confirm-delete-day-modal');
+        }, '取消');
+    }
+
+    function showAddEventModal(docId) {
+        const body = `
+            <form id="event-form" class="space-y-3">
+                <input type="text" id="modal-event-time" placeholder="時間 (例如: 10:30)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="text" id="modal-event-name" placeholder="活動名稱 (例如: 午餐/景點名稱)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="text" id="modal-event-location" placeholder="地點名稱 (用於 Google Maps 連結，可選)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
+                    <option value="activity">活動/購物 (activity)</option>
+                    <option value="food">用餐 (food)</option>
+                    <option value="sight">景點 (sight)</option>
+                    <option value="highlight">重要集合/提醒 (highlight)</option>
+                    <option value="info">交通/資訊 (info)</option>
+                </select>
+            </form>
+        `;
+
+        createModal('add-event-modal', '新增活動', body, '確認新增', () => {
+            const time = document.getElementById('modal-event-time').value;
+            const name = document.getElementById('modal-event-name').value;
+            const location = document.getElementById('modal-event-location').value;
+            const type = document.getElementById('modal-event-type').value;
+
+            if (time && name) {
+                const eventData = { time, name, location: location || undefined, type };
+                addEventToDay(docId, eventData);
+                closeModal('add-event-modal');
+            } else {
+                alertMessage('時間和活動名稱為必填！', 'secondary-bg');
+            }
+        });
+    }
+
+    function showEditEventModal(docId, eventIndex) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        const currentEvent = currentDay.events[eventIndex];
+
+        const body = `
+            <form id="event-form" class="space-y-3">
+                <label class="text-xs text-gray-500">時間</label>
+                <input type="text" id="modal-event-time" value="${currentEvent.time}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">活動名稱</label>
+                <input type="text" id="modal-event-name" value="${currentEvent.name}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">地點名稱 (Google Maps)</label>
+                <input type="text" id="modal-event-location" value="${currentEvent.location || ''}" placeholder="可選" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">活動類型</label>
+                <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
+                    <option value="activity" ${currentEvent.type === 'activity' ? 'selected' : ''}>活動/購物 (activity)</option>
+                    <option value="food" ${currentEvent.type === 'food' ? 'selected' : ''}>用餐 (food)</option>
+                    <option value="sight" ${currentEvent.type === 'sight' ? 'selected' : ''}>景點 (sight)</option>
+                    <option value="highlight" ${currentEvent.type === 'highlight' ? 'selected' : ''}>重要集合/提醒 (highlight)</option>
+                    <option value="info" ${currentEvent.type === 'info' ? 'selected' : ''}>交通/資訊 (info)</option>
+                </select>
+            </form>
+        `;
+
+        createModal('edit-event-modal', '編輯活動', body, '儲存變更', () => {
+            const time = document.getElementById('modal-event-time').value;
+            const name = document.getElementById('modal-event-name').value;
+            const location = document.getElementById('modal-event-location').value;
+            const type = document.getElementById('modal-event-type').value;
+
+            if (time && name) {
+                const eventData = { time, name, location: location || undefined, type };
+                updateEventInDay(docId, eventIndex, eventData);
+                closeModal('edit-event-modal');
+            } else {
+                alertMessage('時間和活動名稱為必填！', 'secondary-bg');
+            }
+        });
+    }
+
+    function confirmDeleteEvent(docId, eventIndex, eventName) {
+        const body = `<p>您確定要刪除 **${eventName}** 這個活動嗎？</p>`;
+        createModal('confirm-delete-event-modal', '確認刪除活動', body, '確定刪除', () => {
+            deleteEventFromDay(docId, eventIndex);
+            closeModal('confirm-delete-event-modal');
+        }, '取消');
+    }
 
     // ====================================================================
     // 5. GUIDE (深度導覽) 渲染函數 - 已更新圖片/地圖邏輯
     // ====================================================================
-
-    // Helper: 取得圖片 Placeholder (使用更穩定的 placehold.co)
-    function getImagePlaceholderUrl(text, color, icon) {
-        const primaryColorHex = color === 'secondary' ? '8D9B8B' : 'C89088'; 
-        const textColorHex = 'F7F3E8'; // 奶油白
-        const imageText = encodeURIComponent(text.substring(0, 5));
-
-        return `https://placehold.co/100x75/${primaryColorHex}/${textColorHex}?text=${imageText}`;
+    
+    // Helper: 獲取地點 Emoji
+    function getLocationEmoji(name) {
+        if (name.includes('國際通')) return '🛍️';
+        if (name.includes('波上宮')) return '⛩️';
+        if (name.includes('首里城')) return '🏯';
+        if (name.includes('Outlet') || name.includes('DFS')) return '👜';
+        if (name.includes('壺屋')) return '🏺';
+        if (name.includes('瀨長島')) return '🏖️';
+        if (name.includes('牧志公設市場')) return '🐟';
+        if (name.includes('福州園')) return '🌳';
+        if (name.includes('DMM')) return '🐠';
+        return '📍';
     }
 
+
     function renderGuide(container) {
-        // [修正] 圖片網址已替換為 Placeholders，並新增營業時間和 Google Maps 連結。
+        // [修正] 圖片已替換為 Emoji + Card，並新增營業時間和 Google Maps 連結。
         const topSpots = [
-            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00", type: 'sight', emoji: '🛍️' },
-            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)", type: 'sight', emoji: '⛩️' },
-            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", mapLocation: "首里城", hours: "08:30 - 18:00 (依季節變動)", type: 'sight', emoji: '🏯' },
-            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", mapLocation: "沖繩 Outlet Mall Ashibinaa", hours: "10:00 - 20:00", type: 'activity', emoji: '👜' },
-            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", mapLocation: "T Galleria Okinawa", hours: "10:00 - 20:00", type: 'activity', emoji: '💎' },
-            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", mapLocation: "壺屋燒物博物館", hours: "10:00 - 18:00 (週一休館)", type: 'sight', emoji: '🏺' },
-            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", mapLocation: "瀬長島ウミカジテラス", hours: "10:00 - 21:00 (依店家而異)", type: 'sight', emoji: '🏖️' },
-            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", mapLocation: "那霸市第一牧志公設市場", hours: "08:00 - 22:00 (每月部分週日休市)", type: 'food', emoji: '🐟' },
-            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", mapLocation: "福州園", hours: "09:00 - 21:00", type: 'sight', emoji: '🌳' },
-            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", mapLocation: "DMM Kariyushi水族館", hours: "10:00 - 21:00 (依季節變動)", type: 'sight', emoji: '🐠' }
+            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00", type: 'sight' },
+            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)", type: 'sight' },
+            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", mapLocation: "首里城", hours: "08:30 - 18:00 (依季節變動)", type: 'sight' },
+            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", mapLocation: "沖繩 Outlet Mall Ashibinaa", hours: "10:00 - 20:00", type: 'activity' },
+            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", mapLocation: "T Galleria Okinawa", hours: "10:00 - 20:00", type: 'activity' },
+            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", mapLocation: "壺屋燒物博物館", hours: "10:00 - 18:00 (週一休館)", type: 'sight' },
+            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", mapLocation: "瀬長島ウミカジテラス", hours: "10:00 - 21:00 (依店家而異)", type: 'sight' },
+            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", mapLocation: "那霸市第一牧志公設市場", hours: "08:00 - 22:00 (每月部分週日休市)", type: 'food' },
+            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", mapLocation: "福州園", hours: "09:00 - 21:00", type: 'sight' },
+            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", mapLocation: "DMM Kariyushi水族館", hours: "10:00 - 21:00 (依季節變動)", type: 'sight' }
         ];
 
         const topFoods = [
-            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", mapLocation: "沖繩そば専門店", hours: "依店家而異", type: 'food', emoji: '🍜' },
-            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", mapLocation: "タコライス店", hours: "依店家而異", type: 'food', emoji: '🌮' },
-            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", mapLocation: "アグー豚料理店", hours: "依店家而異", type: 'food', emoji: '🐷' },
-            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", mapLocation: "海ぶどう専門", hours: "依店家而異", type: 'food', emoji: '🍇' },
-            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", mapLocation: "紅いもタルト店", hours: "依店家而異", type: 'food', emoji: '🍠' },
-            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", mapLocation: "Blue Seal 冰淇淋", hours: "依分店而異", type: 'food', emoji: '🍦' },
-            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", mapLocation: "石垣牛焼肉店", hours: "依店家而異", type: 'food', emoji: '🥩' },
-            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", mapLocation: "ゴーヤチャンプルー店", hours: "依店家而異", type: 'food', emoji: '🍳' },
-            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", mapLocation: "那覇市第一牧志公設市場", hours: "依店家而異", type: 'food', emoji: '🦐' },
-            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", mapLocation: "ジーマーミ豆腐店", hours: "依店家而異", type: 'food', emoji: '🍮' }
+            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", mapLocation: "沖繩そば専門店", hours: "依店家而異", type: 'food' },
+            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", mapLocation: "タコライス店", hours: "依店家而異", type: 'food' },
+            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", mapLocation: "アグー豚料理店", hours: "依店家而異", type: 'food' },
+            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", mapLocation: "海ぶどう専門", hours: "依店家而異", type: 'food' },
+            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", mapLocation: "紅いもタルト店", hours: "依店家而異", type: 'food' },
+            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", mapLocation: "Blue Seal 冰淇淋", hours: "依分店而異", type: 'food' },
+            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", mapLocation: "石垣牛焼肉店", hours: "依店家而異", type: 'food' },
+            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", mapLocation: "ゴーヤチャンプルー店", hours: "依店家而異", type: 'food' },
+            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", mapLocation: "那覇市第一牧志公設市場", hours: "依店家而異", type: 'food' },
+            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", mapLocation: "ジーマーミ豆腐店", hours: "依店家而異", type: 'food' }
         ];
 
         const content = `
@@ -690,8 +993,9 @@
                         ${topSpots.map((spot, index) => `
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
                                 <!-- 圖片已更換為 Emoji + Card -->
-                                <div class="w-24 h-20 bg-secondary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex items-center justify-center">
-                                    <span class="text-4xl">${spot.emoji}</span>
+                                <div class="w-24 h-20 bg-secondary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex flex-col items-center justify-center">
+                                    <span class="text-2xl">${getLocationEmoji(spot.name)}</span>
+                                    <span class="text-xs font-medium mt-1 text-gray-700">${spot.name.split(' ')[0]}</span>
                                 </div>
                                 <div class="flex-grow">
                                     <h3 class="font-bold secondary-text text-lg">${index + 1}. ${spot.name}</h3>
@@ -717,15 +1021,16 @@
                         ${topFoods.map((food, index) => `
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
                                 <!-- 圖片已更換為 Emoji + Card -->
-                                <div class="w-24 h-20 bg-primary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex items-center justify-center">
-                                    <span class="text-4xl">${food.emoji}</span>
+                                <div class="w-24 h-20 bg-primary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex flex-col items-center justify-center">
+                                    <span class="text-2xl">${food.emoji}</span>
+                                    <span class="text-xs font-medium mt-1 text-gray-700">${food.name.split(' ')[0]}</span>
                                 </div>
                                 <div class="flex-grow">
                                     <h3 class="font-bold primary-text text-lg">${index + 1}. ${food.name}</h3>
                                     <p class="text-sm text-gray-600 mt-1">${food.brief}</p>
-                                     <p class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-clock mr-1"></i> **營業時間:** ${food.hours}</p>
-                                     <!-- 點擊後開啟 Modal 提示，導向地圖 App -->
-                                     <button onclick="showMapModal('${food.mapLocation}', '${food.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full mt-2 transition duration-300 hover:opacity-80">
+                                    <p class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-clock mr-1"></i> **營業時間:** ${food.hours}</p>
+                                    <!-- 點擊後開啟 Modal 提示，導向地圖 App -->
+                                    <button onclick="showMapModal('${food.mapLocation}', '${food.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full mt-2 transition duration-300 hover:opacity-80">
                                         <i class="fa-solid fa-map-marker-alt mr-1"></i> Google 地圖 (導航)
                                     </button>
                                 </div>
@@ -737,6 +1042,7 @@
         `;
         container.innerHTML = content;
     }
+
 
     // ====================================================================
     // 6. WALLET (記帳與匯率) 渲染與邏輯 (維持 LocalStorage)
@@ -819,7 +1125,7 @@
         loadExpenses();
     }
 
-    // [WALLET 相關的 JS 函數 (略)]
+    // [WALLET 相關的 JS 函數 (updateExchangeRate, performCalculation, safeEval, previewAndCompressImage, addExpense, loadExpenses, deleteExpense)]
     function updateExchangeRate() { /* ... */
         const input = document.getElementById('rate-input');
         const newRate = parseFloat(input.value);
@@ -1029,7 +1335,7 @@
         loadMemos();
     }
 
-    // [LISTS 相關的 JS 函數 (略)]
+    // [LISTS 相關的 JS 函數 (loadChecklist, toggleChecklistItem, addChecklistItem, deleteChecklistItem, saveMemo, loadMemos)]
     function loadChecklist() { /* ... */
         const list = loadData(LS_KEYS.CHECKLIST, []);
         const container = document.getElementById('checklist-container');
@@ -1192,7 +1498,7 @@
         const locationText = document.getElementById('map-location-text');
 
         // 構建 Google Maps App 導航網址 (用於外部連結)
-        // 使用 maps:// scheme 確保在手機上直接打開 Google Maps App
+        // 使用 https scheme 確保在任何瀏覽器/App 中都能開啟
         const appUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName + ' 沖繩')}`;
 
         mapTitle.textContent = title;
