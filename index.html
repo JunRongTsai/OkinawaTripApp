@@ -26,6 +26,9 @@
             getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy,
             setLogLevel
         };
+        
+        // 全域狀態：Firebase 認證是否準備就緒
+        window.isAuthReady = false; 
 
         // =========================================================================
         // !!! FIREBASE 雲端連線設定 (已更新為您的專案配置) !!!
@@ -77,8 +80,6 @@
             // 檢查 Firebase 是否成功初始化 (避免用錯誤的 Key 嘗試連線)
             if (!firebaseReady) {
                 console.log("Skipping Firebase Auth due to missing configuration.");
-                window.isAuthReady = true;
-                window.postAuthInit();
                 return;
             }
             
@@ -100,10 +101,11 @@
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         console.log("Auth State Ready. Current User ID:", user.uid);
-                        // 確保 Auth 完成後才開始執行 App 的初始化流程
-                        if (!window.isAuthReady) {
-                             window.isAuthReady = true;
-                             window.postAuthInit(); // 執行後續初始化
+                        // 確保 Auth 完成後才將狀態設為 Ready
+                        window.isAuthReady = true; 
+                        // 如果當前頁面是 PLAN，則嘗試重新載入雲端資料
+                        if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
+                            switchTab('plan'); 
                         }
                     } else {
                         console.log("Auth State changed: No user signed in.");
@@ -114,9 +116,12 @@
                 console.error("Firebase Auth Error:", error);
                 window.authError = error; // 捕獲錯誤，以便在 UI 中顯示具體提示
                 
-                // 即使登入失敗，也要標記 Auth 流程完成，以防止無限等待
-                window.isAuthReady = true;
-                window.postAuthInit();
+                // 即使登入失敗，仍標記 Auth 流程完成，但 isAuthReady 保持 false，Plan 頁面會顯示錯誤
+                window.isAuthReady = true; 
+                // 如果當前頁面是 PLAN，則嘗試重新載入以顯示錯誤提示
+                if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
+                    switchTab('plan'); 
+                }
             }
         }
 
@@ -441,7 +446,7 @@
                     <ul class="text-xs list-disc list-inside mt-1 mx-auto max-w-xs text-left">
                         <li>**Authentication**：確保已啟用 **匿名登入 (Anonymous)** 方法。</li>
                         <li>**專案設定**：確保 HTML 中的 **apiKey** 和 **projectId** 正確無誤。</li>
-                        <li>**Firestore 規則**：確保公共路徑 (`/artifacts/{appId}/public/...`) 允許讀寫。</li>
+                        <li>**Firestore 規則**：確保公共路徑 (\`/artifacts/{appId}/public/...\`) 允許讀寫。</li>
                     </ul>
                 </div>
              `;
@@ -494,8 +499,18 @@
     }
 
     function renderPlan(container) {
+        // 如果認證流程尚未完成，則顯示等待訊息
         if (!window.isAuthReady) {
-            container.innerHTML = '<p class="text-center py-12 text-gray-500">正在等待使用者驗證，以連接雲端行程...</p>';
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <i class="fas fa-spinner fa-spin text-3xl secondary-text"></i>
+                    <p class="mt-4 text-gray-600">正在驗證雲端身份，請稍候...</p>
+                </div>
+            `;
+            // 在等待時，嘗試在背景執行認證，以便完成後可以自動載入
+            if (typeof window.initFirebaseAndAuth === 'function') {
+                window.initFirebaseAndAuth();
+            }
             return;
         }
 
@@ -1491,14 +1506,16 @@
 
     // 應用程式啟動入口
     window.onload = function() {
+        // [修正] 不再等待 initFirebaseAndAuth 完成。先渲染畫面。
+        window.postAuthInit(); 
+
         if (typeof window.initFirebaseAndAuth === 'function') {
-            // 嘗試初始化 Firebase 和認證
-            window.initFirebaseAndAuth();
+            // 在背景開始嘗試初始化 Firebase 和認證
+            window.initFirebaseAndAuth(); 
         } else {
-            console.error("Firebase Initialization function not found. Running local init only.");
-            // 如果環境中沒有 Firebase 模組，則執行本地初始化
-            window.isAuthReady = true;
-            window.postAuthInit();
+            console.error("Firebase Initialization function not found.");
+            // 如果連模組都沒載入，也標記 Auth Ready 避免 Plan 頁面卡住。
+            window.isAuthReady = true; 
         }
     };
 
