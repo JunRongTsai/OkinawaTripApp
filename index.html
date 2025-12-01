@@ -29,6 +29,7 @@
         
         // 全域狀態：Firebase 認證是否準備就緒
         window.isAuthReady = false; 
+        window.authError = null; // 儲存認證錯誤訊息
 
         // =========================================================================
         // !!! FIREBASE 雲端連線設定 (已更新為您的專案配置) !!!
@@ -447,6 +448,7 @@
                         <li>**Authentication**：確保已啟用 **匿名登入 (Anonymous)** 方法。</li>
                         <li>**專案設定**：確保 HTML 中的 **apiKey** 和 **projectId** 正確無誤。</li>
                         <li>**Firestore 規則**：確保公共路徑 (\`/artifacts/{appId}/public/...\`) 允許讀寫。</li>
+                        <li>**網域授權**：在 Auth 設定中，將您的 Netlify 網址加入 **授權網域 (Authorized Domains)**。</li>
                     </ul>
                 </div>
              `;
@@ -916,30 +918,31 @@
     // ====================================================================
 
     function renderGuide(container) {
+        // [修正] 圖片網址已替換為 Placeholders，並新增營業時間和 Google Maps 連結。
         const topSpots = [
-            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", imgUrl: "https://i.imgur.com/k6lP09r.jpeg", mapCoords: "127.684,26.215,127.695,26.225" },
-            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", imgUrl: "https://i.imgur.com/1Gv1b0f.jpeg", mapCoords: "127.674,26.219,127.684,26.229" },
-            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", imgUrl: "https://i.imgur.com/3Z7Z2Fw.jpeg", mapCoords: "127.717,26.216,127.727,26.226" },
-            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", imgUrl: "https://i.imgur.com/8Qp21pT.jpeg" },
-            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", imgUrl: "https://i.imgur.com/x0sN8Xn.jpeg" },
-            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", imgUrl: "https://i.imgur.com/pYxR5yB.jpeg" },
-            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", imgUrl: "https://i.imgur.com/9nZlF5x.jpeg" },
-            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", imgUrl: "https://i.imgur.com/A6j4r9s.jpeg" },
-            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", imgUrl: "https://i.imgur.com/4hJ0TqT.jpeg" },
-            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", imgUrl: "https://i.imgur.com/qLw0gS6.jpeg" }
+            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00" },
+            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)" },
+            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", mapLocation: "首里城", hours: "08:30 - 18:00 (依季節變動)" },
+            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", mapLocation: "沖繩 Outlet Mall Ashibinaa", hours: "10:00 - 20:00" },
+            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", mapLocation: "T Galleria Okinawa", hours: "10:00 - 20:00" },
+            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", mapLocation: "壺屋燒物博物館", hours: "10:00 - 18:00 (週一休館)" },
+            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", mapLocation: "瀬長島ウミカジテラス", hours: "10:00 - 21:00 (依店家而異)" },
+            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", mapLocation: "那霸市第一牧志公設市場", hours: "08:00 - 22:00 (每月部分週日休市)" },
+            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", mapLocation: "福州園", hours: "09:00 - 21:00" },
+            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", mapLocation: "DMM Kariyushi水族館", hours: "10:00 - 21:00 (依季節變動)" }
         ];
 
         const topFoods = [
-            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", imgUrl: "https://i.imgur.com/sS7sXQJ.jpeg" },
-            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", imgUrl: "https://i.imgur.com/xT5u6Xz.jpeg" },
-            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", imgUrl: "https://i.imgur.com/gK2S8pT.jpeg" },
-            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", imgUrl: "https://i.imgur.com/c4Y2K0f.jpeg" },
-            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", imgUrl: "https://i.imgur.com/dK7cR1k.jpeg" },
-            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", imgUrl: "https://i.imgur.com/z0m7T0y.jpeg" },
-            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", imgUrl: "https://i.imgur.com/vH1yU2j.jpeg" },
-            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", imgUrl: "https://i.imgur.com/rN5L1oT.jpeg" },
-            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", imgUrl: "https://i.imgur.com/2Xy3z3F.jpeg" },
-            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", imgUrl: "https://i.imgur.com/pZf4lXq.jpeg" }
+            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", mapLocation: "沖繩そば専門店", hours: "依店家而異" },
+            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", mapLocation: "タコライス店", hours: "依店家而異" },
+            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", mapLocation: "アグー豚料理店", hours: "依店家而異" },
+            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", mapLocation: "海ぶどう専門", hours: "依店家而異" },
+            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", mapLocation: "紅いもタルト店", hours: "依店家而異" },
+            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", mapLocation: "Blue Seal 冰淇淋", hours: "依分店而異" },
+            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", mapLocation: "石垣牛焼肉店", hours: "依店家而異" },
+            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", mapLocation: "ゴーヤチャンプルー店", hours: "依店家而異" },
+            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", mapLocation: "那覇市第一牧志公設市場", hours: "依店家而異" },
+            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", mapLocation: "ジーマーミ豆腐店", hours: "依店家而異" }
         ];
 
         const content = `
@@ -951,17 +954,18 @@
                     <div class="space-y-6">
                         ${topSpots.map((spot, index) => `
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
-                                <img src="${spot.imgUrl}" alt="" onerror="this.onerror=null;this.src='https://placehold.co/100x75/8D9B8B/F7F3E8?text=Image';" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
+                                <!-- 圖片已更換為 Placeholder -->
+                                <img src="https://placehold.co/100x75/8D9B8B/F7F3E8?text=${encodeURIComponent(spot.name.substring(0, 5) + '...')}" alt="" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
                                 <div class="flex-grow">
                                     <h3 class="font-bold secondary-text text-lg">${index + 1}. ${spot.name}</h3>
                                     <p class="text-sm text-gray-600 mt-1">${spot.desc}</p>
-                                    ${spot.mapCoords ? `
-                                        <div class="mt-2">
-                                            <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.name)}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
-                                                <i class="fa-solid fa-map-marker-alt mr-1"></i> Google Maps
-                                            </a>
-                                        </div>
-                                    ` : ''}
+                                    <p class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-clock mr-1"></i> **營業時間:** ${spot.hours}</p>
+                                    <div class="mt-2">
+                                        <!-- 統一改為 Google Maps 連結 -->
+                                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('沖繩 ' + spot.mapLocation)}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
+                                            <i class="fa-solid fa-map-marker-alt mr-1"></i> Google 地圖導航
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         `).join('')}
@@ -975,12 +979,15 @@
                      <div class="space-y-6">
                         ${topFoods.map((food, index) => `
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
-                                <img src="${food.imgUrl}" alt="" onerror="this.onerror=null;this.src='https://placehold.co/100x75/C89088/F7F3E8?text=Food';" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
+                                <!-- 圖片已更換為 Placeholder -->
+                                <img src="https://placehold.co/100x75/C89088/F7F3E8?text=${encodeURIComponent(food.name.substring(0, 5) + '...')}" alt="" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
                                 <div class="flex-grow">
                                     <h3 class="font-bold primary-text text-lg">${index + 1}. ${food.name}</h3>
                                     <p class="text-sm text-gray-600 mt-1">${food.brief}</p>
-                                     <a href="https://www.google.com/search?q=${encodeURIComponent(food.name + ' 沖繩 推薦')}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full mt-2 transition duration-300 hover:opacity-80">
-                                        <i class="fa-solid fa-magnifying-glass mr-1"></i> 搜尋食記
+                                     <p class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-clock mr-1"></i> **營業時間:** ${food.hours}</p>
+                                     <!-- 統一改為 Google Maps 連結 -->
+                                     <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('沖繩 ' + food.mapLocation)}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full mt-2 transition duration-300 hover:opacity-80">
+                                        <i class="fa-solid fa-map-marker-alt mr-1"></i> Google 地圖導航
                                     </a>
                                 </div>
                             </div>
@@ -1442,11 +1449,11 @@
                 <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-amber-500">
                     <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i> 旅遊禁忌與注意事項</h2>
                     <ul class="list-disc list-inside text-sm text-gray-600 ml-2 space-y-2">
-                        <li><strong>公共場所：</strong>請勿在街道上邊走邊吃，或在禁菸區吸菸。</li>
+                        <li><strong>公共場所：：</strong>請勿在街道上邊走邊吃，或在禁菸區吸菸。</li>
                         <li><strong>海邊防曬：：</strong>沖繩紫外線強，即便不是夏季也需做好防曬措施。</li>
                         <li><strong>大眾交通：：</strong>那霸市區交通以單軌電車為主，前往北部如水族館需搭乘高速巴士。</li>
                         <li><strong>出入境：：</strong>嚴禁攜帶未經申報或超過限額的肉製品、水果、動物製品入境日本。</li>
-                        <li><strong>小費文化：</strong>日本沒有給小費的習慣。</li>
+                        <li><strong>小費文化：：</strong>日本沒有給小費的習慣。</li>
                     </ul>
                 </div>
             </div>
