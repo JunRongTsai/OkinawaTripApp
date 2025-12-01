@@ -32,22 +32,21 @@
         window.authError = null; // 儲存認證錯誤訊息
 
         // =========================================================================
-        // !!! FIREBASE 雲端連線設定 (已替換為您提供的 config) !!!
+        // !!! FIREBASE 雲端連線設定 (已更新為您提供的正確 Config) !!!
         // =========================================================================
         
         // 1. 設定 App ID (用於 Firestore 路徑 artifacts/{appId}/public/data/itineraries)
         const APP_ID_FOR_NETLIFY = 'okinawa-group-trip-2026'; 
 
-        // 2. 填入您在 Firebase Console 獲取的 Web App 設定
-        // 請確認以下所有鍵值與您的專案配置完全一致，沒有多餘空格或錯誤。
+        // 2. 填入您在 Firebase Console 獲取的 Web App 設定 (最新版)
         const FIREBASE_CONFIG_FOR_NETLIFY = {
-			 apiKey: "AIzaSyDc7dkeG9RJcmyuNv2ZYDZEtkTUwNWAYek",
-			 authDomain: "travelapp-b382d.firebaseapp.com",
-			 projectId: "travelapp-b382d",
-			 storageBucket: "travelapp-b382d.firebasestorage.app",
-			 messagingSenderId: "579137022414",
-			 appId: "1:579137022414:web:890bcdc6ffa6e25f5da39f",
-			 measurementId: "G-T0YDHHG7DN"
+             apiKey: "AIzaSyDc7dkeG9RJcmyuNv2ZYDZETktUWnWAYeK", // <-- 已更新
+             authDomain: "travelapp-b382d.firebaseapp.com", // <-- 已更新
+             projectId: "travelapp-b382d", // <-- 已更新
+             storageBucket: "travelapp-b382d.firebasestorage.app", // <-- 已更新
+             messagingSenderId: "579137022414", // <-- 已更新
+             appId: "1:579137022414:web:890bcdc6ffa6e25f5da39f", // <-- 已更新
+             measurementId: "G-T0YDHHG7DN" // <-- 新增
         };
         
         // 在 Netlify 環境中，直接使用硬編碼的配置
@@ -635,7 +634,7 @@
     // ================= PLAN - Firestore 寫入/修改邏輯 (略) =================
 
     // 由於這段代碼保持不變且篇幅過長，這裡省略以避免重複。
-    // ... addDayToFirestore, updateDayInFirestore, deleteDayFromFirestore, addEventToDay, updateEventInDay, deleteEventFromDay ...
+    // ... addDayToFirestore, updateDayInFirestore, deleteDayFromFirestore, addEventToDay, updateEventInDay, deleteEventInDay ...
 
     // ================= PLAN - 模態框 (Modal) 邏輯 (略) =================
 
@@ -645,47 +644,41 @@
     // 5. GUIDE (深度導覽) 渲染函數 - 已更新圖片/地圖邏輯
     // ====================================================================
 
-    // Helper: 取得 SVG 圖片 Placeholder
-    function getSvgPlaceholder(text, color, icon) {
-        const primaryColor = color === 'secondary' ? '8D9B8B' : 'C89088'; // Secondary / Primary
-        const iconCode = icon === 'food' ? 'U+F2E7' : 'U+F5B0'; // Utensils / Camera
+    // Helper: 取得圖片 Placeholder (使用更穩定的 placehold.co)
+    function getImagePlaceholderUrl(text, color, icon) {
+        const primaryColorHex = color === 'secondary' ? '8D9B8B' : 'C89088'; 
+        const textColorHex = 'F7F3E8'; // 奶油白
+        const imageText = encodeURIComponent(text.substring(0, 5));
 
-        return `
-            <svg class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md bg-gray-100 p-2" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <rect width="100" height="100" rx="10" ry="10" fill="#${primaryColor}" fill-opacity="0.1"></rect>
-                <circle cx="50" cy="40" r="20" fill="#${primaryColor}" fill-opacity="0.7"></circle>
-                <text x="50%" y="75%" dominant-baseline="middle" text-anchor="middle" font-family="'Noto Sans TC', sans-serif" font-size="16" fill="#${primaryColor}" font-weight="bold">${text}</text>
-                <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-family="FontAwesome" font-size="30" fill="white">${icon === 'food' ? '&#xf069;' : '&#xf030;'}</text>
-            </svg>
-        `.trim();
+        return `https://placehold.co/100x75/${primaryColorHex}/${textColorHex}?text=${imageText}`;
     }
 
     function renderGuide(container) {
-        // [修正] 圖片網址已替換為 SVG Placeholders，並新增營業時間和 Google Maps 連結。
+        // [修正] 圖片網址已替換為 Placeholders，並新增營業時間和 Google Maps 連結。
         const topSpots = [
-            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00" },
-            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)" },
-            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", mapLocation: "首里城", hours: "08:30 - 18:00 (依季節變動)" },
-            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", mapLocation: "沖繩 Outlet Mall Ashibinaa", hours: "10:00 - 20:00" },
-            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", mapLocation: "T Galleria Okinawa", hours: "10:00 - 20:00" },
-            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", mapLocation: "壺屋燒物博物館", hours: "10:00 - 18:00 (週一休館)" },
-            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", mapLocation: "瀬長島ウミカジテラス", hours: "10:00 - 21:00 (依店家而異)" },
-            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", mapLocation: "那霸市第一牧志公設市場", hours: "08:00 - 22:00 (每月部分週日休市)" },
-            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", mapLocation: "福州園", hours: "09:00 - 21:00" },
-            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", mapLocation: "DMM Kariyushi水族館", hours: "10:00 - 21:00 (依季節變動)" }
+            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00", type: 'sight' },
+            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)", type: 'sight' },
+            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", mapLocation: "首里城", hours: "08:30 - 18:00 (依季節變動)", type: 'sight' },
+            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", mapLocation: "沖繩 Outlet Mall Ashibinaa", hours: "10:00 - 20:00", type: 'activity' },
+            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", mapLocation: "T Galleria Okinawa", hours: "10:00 - 20:00", type: 'activity' },
+            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", mapLocation: "壺屋燒物博物館", hours: "10:00 - 18:00 (週一休館)", type: 'sight' },
+            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", mapLocation: "瀬長島ウミカジテラス", hours: "10:00 - 21:00 (依店家而異)", type: 'sight' },
+            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", mapLocation: "那霸市第一牧志公設市場", hours: "08:00 - 22:00 (每月部分週日休市)", type: 'food' },
+            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", mapLocation: "福州園", hours: "09:00 - 21:00", type: 'sight' },
+            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", mapLocation: "DMM Kariyushi水族館", hours: "10:00 - 21:00 (依季節變動)", type: 'sight' }
         ];
 
         const topFoods = [
-            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", mapLocation: "沖繩そば専門店", hours: "依店家而異" },
-            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", mapLocation: "タコライス店", hours: "依店家而異" },
-            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", mapLocation: "アグー豚料理店", hours: "依店家而異" },
-            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", mapLocation: "海ぶどう専門", hours: "依店家而異" },
-            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", mapLocation: "紅いもタルト店", hours: "依店家而異" },
-            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", mapLocation: "Blue Seal 冰淇淋", hours: "依分店而異" },
-            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", mapLocation: "石垣牛焼肉店", hours: "依店家而異" },
-            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", mapLocation: "ゴーヤチャンプルー店", hours: "依店家而異" },
-            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", mapLocation: "那覇市第一牧志公設市場", hours: "依店家而異" },
-            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", mapLocation: "ジーマーミ豆腐店", hours: "依店家而異" }
+            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", mapLocation: "沖繩そば専門店", hours: "依店家而異", type: 'food' },
+            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", mapLocation: "タコライス店", hours: "依店家而異", type: 'food' },
+            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", mapLocation: "アグー豚料理店", hours: "依店家而異", type: 'food' },
+            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", mapLocation: "海ぶどう専門", hours: "依店家而異", type: 'food' },
+            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", mapLocation: "紅いもタルト店", hours: "依店家而異", type: 'food' },
+            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", mapLocation: "Blue Seal 冰淇淋", hours: "依分店而異", type: 'food' },
+            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", mapLocation: "石垣牛焼肉店", hours: "依店家而異", type: 'food' },
+            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", mapLocation: "ゴーヤチャンプルー店", hours: "依店家而異", type: 'food' },
+            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", mapLocation: "那覇市第一牧志公設市場", hours: "依店家而異", type: 'food' },
+            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", mapLocation: "ジーマーミ豆腐店", hours: "依店家而異", type: 'food' }
         ];
 
         const content = `
@@ -697,8 +690,8 @@
                     <div class="space-y-6">
                         ${topSpots.map((spot, index) => `
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
-                                <!-- 圖片已更換為 SVG Placeholder -->
-                                ${getSvgPlaceholder(spot.name.substring(0, 5), 'secondary', 'sight')}
+                                <!-- 圖片已更換為 Placehold.co -->
+                                <img src="${getImagePlaceholderUrl(spot.name.substring(0, 5), 'secondary', 'sight')}" alt="" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
                                 <div class="flex-grow">
                                     <h3 class="font-bold secondary-text text-lg">${index + 1}. ${spot.name}</h3>
                                     <p class="text-sm text-gray-600 mt-1">${spot.desc}</p>
@@ -722,8 +715,8 @@
                      <div class="space-y-6">
                         ${topFoods.map((food, index) => `
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
-                                <!-- 圖片已更換為 SVG Placeholder -->
-                                ${getSvgPlaceholder(food.name.substring(0, 5), 'primary', 'food')}
+                                <!-- 圖片已更換為 Placehold.co -->
+                                <img src="${getImagePlaceholderUrl(food.name.substring(0, 5), 'primary', 'food')}" alt="" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
                                 <div class="flex-grow">
                                     <h3 class="font-bold primary-text text-lg">${index + 1}. ${food.name}</h3>
                                     <p class="text-sm text-gray-600 mt-1">${food.brief}</p>
@@ -738,24 +731,7 @@
                     </div>
                 </div>
 
-                <!-- 國際通 OpenStreetMap -->
-                <div class="bg-card p-6 rounded-xl shadow-lg border border-gray-100">
-                    <h2 class="text-2xl font-bold primary-text mb-3">📍 國際通地理位置</h2>
-                    <!-- 嵌入 OpenStreetMap Iframe (沖繩國際通座標) -->
-                    <div class="w-full h-64 border-2 border-gray-300 rounded-lg overflow-hidden shadow-inner mt-4">
-                        <iframe
-                            width="100%"
-                            height="100%"
-                            frameborder="0"
-                            scrolling="no"
-                            marginheight="0"
-                            marginwidth="0"
-                            src="https://www.openstreetmap.org/export/embed.html?bbox=127.684,26.215,127.695,26.225&amp;layer=mapnik&amp;marker=26.220,127.689"
-                            style="border: 1px solid black"
-                        ></iframe>
-                    </div>
-                    <small class="text-xs text-gray-500 mt-2 block text-center">國際通區域地圖</small>
-                </div>
+                <!-- 國際通 OpenStreetMap (已移除) -->
 
             </div>
         `;
@@ -1216,7 +1192,7 @@
         const externalLink = document.getElementById('map-external-link');
 
         // 構建 Google Maps 嵌入網址 (使用地點名稱進行搜尋，iframe 必須是嵌入式網址)
-        // 為了讓 iframe 正常顯示，使用 q= 參數進行搜尋定位
+        // 確保使用正確的 firebaseConfig.apiKey，因為 Google Maps Embed API 依賴它
         const embedUrl = `https://www.google.com/maps/embed/v1/place?key=${firebaseConfig.apiKey}&q=${encodeURIComponent(locationName + ' 沖繩')}`;
         
         // 構建 Google Maps App 導航網址 (用於外部連結)
