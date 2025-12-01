@@ -112,6 +112,8 @@
 
             } catch (error) {
                 console.error("Firebase Auth Error:", error);
+                window.authError = error; // 捕獲錯誤，以便在 UI 中顯示具體提示
+                
                 // 即使登入失敗，也要標記 Auth 流程完成，以防止無限等待
                 window.isAuthReady = true;
                 window.postAuthInit();
@@ -262,6 +264,7 @@
     // 雲端行程資料 (將從 Firestore 讀取)
     let cloudItineraryData = [];
     let unsubscribeItinerary = null; // 用於儲存 Firestore 監聽器
+    window.authError = null; // New: 儲存認證錯誤訊息
 
     // 旅遊資訊 (用於初始化和靜態頁面)
     const STATIC_TRAVEL_DATA = {
@@ -415,7 +418,7 @@
 
     // 實時獲取行程數據
     function fetchItineraryRealtime(container) {
-        // 檢查是否因配置錯誤而跳過初始化
+        // 檢查是否因配置錯誤而跳過初始化 (Case 1: Placeholder key)
         if (typeof window.db === 'object' && !window.db.app) {
              container.innerHTML = `
                 <div class="text-center p-8 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-xl shadow-md">
@@ -424,6 +427,25 @@
                     <p class="text-sm">請編輯此 HTML 檔案，並在開頭的 &lt;script type="module"&gt; 區塊中，將 **YOUR_API_KEY_HERE** 替換為您自己的 Firebase 專案設定。</p>
                 </div>
              `;
+             return;
+        }
+
+        // 檢查是否因為認證失敗 (Case 2: Invalid API key/Auth disabled)
+        if (window.authError) {
+             const errorHtml = `
+                <div class="text-center p-8 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-xl shadow-md">
+                    <i class="fa-solid fa-link-slash text-2xl mb-3"></i>
+                    <p class="font-bold mb-2">雲端連線失敗：認證錯誤</p>
+                    <p class="text-sm">Firebase 回傳錯誤：<code>${window.authError.code || '連線異常'}</code></p>
+                    <p class="text-xs mt-2 font-bold">請檢查您的 Firebase Console：</p>
+                    <ul class="text-xs list-disc list-inside mt-1 mx-auto max-w-xs text-left">
+                        <li>**Authentication**：確保已啟用 **匿名登入 (Anonymous)** 方法。</li>
+                        <li>**專案設定**：確保 HTML 中的 **apiKey** 和 **projectId** 正確無誤。</li>
+                        <li>**Firestore 規則**：確保公共路徑 (`/artifacts/{appId}/public/...`) 允許讀寫。</li>
+                    </ul>
+                </div>
+             `;
+             container.innerHTML = errorHtml;
              return;
         }
 
@@ -1406,8 +1428,8 @@
                     <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i> 旅遊禁忌與注意事項</h2>
                     <ul class="list-disc list-inside text-sm text-gray-600 ml-2 space-y-2">
                         <li><strong>公共場所：</strong>請勿在街道上邊走邊吃，或在禁菸區吸菸。</li>
-                        <li><strong>海邊防曬：</strong>沖繩紫外線強，即便不是夏季也需做好防曬措施。</li>
-                        <li><strong>大眾交通：</strong>那霸市區交通以單軌電車為主，前往北部如水族館需搭乘高速巴士。</li>
+                        <li><strong>海邊防曬：：</strong>沖繩紫外線強，即便不是夏季也需做好防曬措施。</li>
+                        <li><strong>大眾交通：：</strong>那霸市區交通以單軌電車為主，前往北部如水族館需搭乘高速巴士。</li>
                         <li><strong>出入境：：</strong>嚴禁攜帶未經申報或超過限額的肉製品、水果、動物製品入境日本。</li>
                         <li><strong>小費文化：</strong>日本沒有給小費的習慣。</li>
                     </ul>
