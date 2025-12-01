@@ -953,6 +953,21 @@
         if (name.includes('DMM')) return '🐠';
         return '📍';
     }
+    
+    // Helper: 獲取食物 Emoji
+    function getFoodEmoji(name) {
+        if (name.includes('沖繩麵')) return '🍜';
+        if (name.includes('塔可飯')) return '🌮';
+        if (name.includes('阿古豬')) return '🐷';
+        if (name.includes('海葡萄')) return '🍇';
+        if (name.includes('紅芋塔')) return '🍠';
+        if (name.includes('Blue Seal')) return '🍦';
+        if (name.includes('石垣牛') || name.includes('宮古牛')) return '🥩';
+        if (name.includes('苦瓜炒蛋')) return '🍳';
+        if (name.includes('代客料理海鮮')) return '🦐';
+        if (name.includes('花生豆腐')) return '🍮';
+        return '🍽️';
+    }
 
 
     function renderGuide(container) {
@@ -1022,7 +1037,7 @@
                             <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
                                 <!-- 圖片已更換為 Emoji + Card -->
                                 <div class="w-24 h-20 bg-primary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex flex-col items-center justify-center">
-                                    <span class="text-2xl">${food.emoji}</span>
+                                    <span class="text-2xl">${getFoodEmoji(food.name)}</span>
                                     <span class="text-xs font-medium mt-1 text-gray-700">${food.name.split(' ')[0]}</span>
                                 </div>
                                 <div class="flex-grow">
