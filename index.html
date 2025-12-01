@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>禪意旅程 | 沖繩雲端協作助手</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <!-- Google Fonts: Noto Sans TC for Zen/Minimalist look -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500;700&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDK Modules for Cloud Features -->
+    <!-- 注意：此處必須使用 type="module" -->
+    <script type="module">
+        // 確保 Firebase API 模組化導入
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 設定全域變數以供其他 script 區塊存取
+        window.firebaseModules = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy,
+            setLogLevel
+        };
+
+        // 檢查 Canvas 提供的全局變數
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // 初始化 Firebase App
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // 設定日誌級別為 Debug
+        setLogLevel('debug'); 
+
+        window.db = db;
+        window.auth = auth;
+        window.appId = appId;
+
+        // 認證邏輯
+        async function initFirebaseAndAuth() {
+            try {
+                // 使用自定義 Token 登入，如果沒有則使用匿名登入
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                    console.log("Firebase: Signed in with custom token.");
+                } else {
+                    await signInAnonymously(auth);
+                    console.log("Firebase: Signed in anonymously.");
+                }
+
+                // 獲取當前用戶 ID
+                const userId = auth.currentUser?.uid || crypto.randomUUID();
+                window.userId = userId;
+
+                // 等待認證狀態就緒後，開始載入行程
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        console.log("Auth State Ready. Current User ID:", user.uid);
+                        // 確保 Auth 完成後才開始執行 App 的初始化流程
+                        if (!window.isAuthReady) {
+                             window.isAuthReady = true;
+                             window.postAuthInit(); // 執行後續初始化
+                        }
+                    } else {
+                        console.log("Auth State changed: No user signed in.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                // 即使登入失敗，也要標記 Auth 流程完成，以防止無限等待
+                window.isAuthReady = true;
+                window.postAuthInit();
+            }
+        }
+
+        // 儲存初始化函數
+        window.initFirebaseAndAuth = initFirebaseAndAuth;
+    </script>
+
+
+    <style>
+        :root {
+            /* 主色: 柔和的紅棕色/鮭魚粉 (Salmon/Red-Brown) */
+            --color-primary: #C89088;
+            /* 次色: 柔和的墨綠色 (Muted Green) */
+            --color-secondary: #8D9B8B;
+            /* 背景色: 奶油白/米白 (Creamy White) */
+            --color-background: #F7F3E8;
+            /* 卡片背景色 */
+            --color-card: #FFFFFF;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--color-background);
+            padding-bottom: 72px; /* 底部導航列高度 */
+        }
+
+        /* 自定義 Tailwind 設定 */
+        .primary-bg { background-color: var(--color-primary); }
+        .primary-text { color: var(--color-primary); }
+        .secondary-bg { background-color: var(--color-secondary); }
+        .secondary-text { color: var(--color-secondary); }
+        .bg-card { background-color: var(--color-card); }
+
+        .nav-icon {
+            transition: color 0.2s;
+        }
+
+        /* 行程時間軸樣式 */
+        .timeline-item {
+            position: relative;
+            padding-left: 20px;
+            border-left: 2px solid #D1D5DB; /* 灰色線條 */
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 0;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: var(--color-secondary);
+            border: 3px solid var(--color-background);
+        }
+
+        .timeline-highlight::before {
+             background-color: var(--color-primary) !important;
+             border: 3px solid var(--color-background);
+        }
+
+        /* 隱藏原生檔案輸入框 */
+        .file-input-hidden {
+            width: 0.1px;
+            height: 0.1px;
+            opacity: 0;
+            overflow: hidden;
+            position: absolute;
+            z-index: -1;
+        }
+
+        /* 滾動條美化 (Webkit/Chrome) */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: var(--color-secondary);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-track {
+            background-color: var(--color-background);
+        }
+
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Header 頂部標題 (Mobile-First) -->
+    <header class="fixed top-0 left-0 right-0 bg-card shadow-lg p-4 z-10">
+        <h1 id="app-title" class="text-xl font-bold primary-text text-center">旅程規劃 (PLAN)</h1>
+    </header>
+
+    <!-- 主內容區域 -->
+    <main id="app-content" class="pt-[64px] pb-4 px-4"></main>
+    <!-- Loading Modal (用於 API 請求或耗時操作) -->
+    <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-card p-6 rounded-xl shadow-2xl flex items-center primary-text">
+            <i class="fas fa-spinner fa-spin mr-3"></i>
+            <span id="loading-message">載入中...</span>
+        </div>
+    </div>
+
+
+    <!-- 底部導航列 (Fixed Bottom Navigation) -->
+    <nav class="fixed bottom-0 left-0 right-0 h-16 primary-bg shadow-2xl z-20 flex justify-around items-center">
+        <button onclick="switchTab('plan')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
+            <i class="fa-solid fa-calendar-alt text-xl"></i>
+            <span class="text-xs mt-1">行程表</span>
+        </button>
+        <button onclick="switchTab('guide')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
+            <i class="fa-solid fa-compass text-xl"></i>
+            <span class="text-xs mt-1">導覽</span>
+        </button>
+        <button onclick="switchTab('wallet')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
+            <i class="fa-solid fa-wallet text-xl"></i>
+            <span class="text-xs mt-1">記帳</span>
+        </button>
+        <button onclick="switchTab('lists')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
+            <i class="fa-solid fa-list-check text-xl"></i>
+            <span class="text-xs mt-1">清單</span>
+        </button>
+        <button onclick="switchTab('info')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
+            <i class="fa-solid fa-circle-info text-xl"></i>
+            <span class="text-xs mt-1">資訊</span>
+        </button>
+    </nav>
+
+<script>
+    // ====================================================================
+    // 1. 全域設定與資料模型 (Global Setup and Data Model)
+    // ====================================================================
+
+    // 匯率設定 (日幣 JPY 換算為 台幣 TWD)
+    const TWD_RATE_KEY = 'zenTravelApp_TWD_RATE';
+    const initialRate = 0.215; // 初始匯率： 1 JPY = 0.215 TWD
+
+    // LocalStorage Keys (記帳和清單仍使用 LocalStorage)
+    const LS_KEYS = {
+        WALLET: 'zenTravelApp_wallet',
+        CHECKLIST: 'zenTravelApp_checklist',
+        MEMOS: 'zenTravelApp_memos',
+        CURRENT_TAB: 'zenTravelApp_currentTab'
+    };
+
+    // 雲端行程資料 (將從 Firestore 讀取)
+    let cloudItineraryData = [];
+    let unsubscribeItinerary = null; // 用於儲存 Firestore 監聽器
+
+    // 旅遊資訊 (用於初始化和靜態頁面)
+    const STATIC_TRAVEL_DATA = {
+        // 航班資訊
+        flight: {
+            outbound: "IT288 (KHH 09:45 → OKA 12:30)", // 臺灣虎航 KHH -> OKA
+            return: "CI133 (OKA 19:30 → KHH 20:25)" // 中華航空 OKA -> KHH
+        },
+        // 住宿資訊
+        accommodation: {
+            name: "那霸縣廳前阿爾蒙特 (Almont Hotel Naha-Kenchomae)",
+            address: "沖繩縣那霸市久茂地 1-3-5 (近國際通)"
+        },
+        // 必備清單 (已移除自駕相關)
+        prepList: [
+            "護照、簽證", "日幣現金、信用卡", "網卡/eSIM/Wifi機", "充電器、轉接頭", "雨具、外套",
+            "個人藥品", "換洗衣物", "旅遊保險單", "電子機票/訂房確認單"
+        ]
+    };
+
+    // 預設行程 (那霸為主, 步行/大眾交通) - 僅用於 Firestore 首次載入空值時的初始化參考
+    const DEFAULT_ITINERARY = [
+        { id: 'D1', day: 'D1 (抵達/市區)', date: '03/07 (六)', order: 1, events: [
+            { time: '12:30', name: '抵達沖繩那霸機場 (OKA)', type: 'info' },
+            { time: '14:30', name: 'Check-in 飯店 (那霸縣廳前阿爾蒙特)', type: 'info', location: '沖繩縣那霸市久茂地 1-3-5' },
+            { time: '17:00', name: '國際通散策與購物', type: 'activity', location: '國際通' },
+            { time: '19:30', name: '晚餐：琉球特色料理 (重要集合時間)', type: 'highlight', location: '國際通' }
+        ]},
+        { id: 'D2', day: 'D2 (海洋/水族館)', date: '03/08 (日)', order: 2, events: [
+            { time: '09:00', name: '搭乘高速巴士前往海洋博公園 (水族館)', type: 'highlight', location: '名護' },
+            { time: '11:00', name: '沖繩美麗海水族館 (Churaumi Aquarium)', type: 'sight', location: '海洋博公園' },
+            { time: '16:00', name: '觀賞海豚表演 (Ocean Expo Park)', type: 'sight' },
+            { time: '19:30', name: '返回那霸市區', type: 'info' }
+        ]},
+        { id: 'D3', day: 'D3 (文化/購物)', date: '03/09 (一)', order: 3, events: [
+            { time: '10:00', name: '波上宮 (海邊神社)', type: 'sight', location: '波上宮' },
+            { time: '12:00', name: '午餐：琉球茶房 (查看食記)', type: 'food', location: '琉球茶房' },
+            { time: '15:00', name: '搭乘單軌電車至小祿站', type: 'info' },
+            { time: '15:30', name: 'AEON Mall / Ashibinaa Outlet 購物', type: 'activity', location: 'Ashibinaa Outlet' }
+        ]},
+        { id: 'D4', day: 'D4 (市區/慢活)', date: '03/10 (二)', order: 4, events: [
+            { time: '10:30', name: '首里城公園 (搭乘單軌電車)', type: 'sight', location: '首里城' },
+            { time: '13:00', name: '首里金城町石疊道散步', type: 'sight' },
+            { time: '16:00', name: '那霸國際通周邊咖啡廳休息', type: 'activity' },
+            { time: '19:00', name: '晚餐：國際通周邊美食探索 (TOP10)', type: 'food', location: '國際通' }
+        ]},
+        { id: 'D5', day: 'D5 (返程)', date: '03/11 (三)', order: 5, events: [
+            { time: '10:00', name: '飯店 Check-out / 寄放行李', type: 'info' },
+            { time: '12:00', name: '那霸市區午餐與最終採買', type: 'activity', location: '國際通' },
+            { time: '16:00', name: '取行李，前往那霸機場 (OKA)', type: 'highlight' },
+            { time: '19:30', name: 'CI133 飛機起飛 (OKA → KHH)', type: 'info' }
+        ]}
+    ];
+
+    // ====================================================================
+    // 2. LocalStorage 存取與初始化 (Storage & Init)
+    // ====================================================================
+
+    // 載入資料 (通用 - 僅用於 LocalStorage)
+    function loadData(key, defaultVal) {
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : defaultVal;
+    }
+
+    // 儲存資料 (通用 - 僅用於 LocalStorage)
+    function saveData(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    // 初始化 LocalStorage 資料
+    function initializeStorage() {
+        if (!localStorage.getItem(LS_KEYS.CHECKLIST)) {
+            const initialChecklist = STATIC_TRAVEL_DATA.prepList.map(item => ({
+                id: crypto.randomUUID(),
+                text: item,
+                checked: false
+            }));
+            saveData(LS_KEYS.CHECKLIST, initialChecklist);
+        }
+
+        if (!localStorage.getItem(LS_KEYS.WALLET)) {
+            saveData(LS_KEYS.WALLET, []);
+        }
+
+        if (!localStorage.getItem(LS_KEYS.MEMOS)) {
+            saveData(LS_KEYS.MEMOS, []);
+        }
+
+        if (!localStorage.getItem(TWD_RATE_KEY)) {
+            localStorage.setItem(TWD_RATE_KEY, initialRate.toString());
+        }
+    }
+
+    // ====================================================================
+    // 3. 畫面切換與導航 (Tab Switching)
+    // ====================================================================
+
+    const TABS = {
+        plan: { title: '旅程規劃 (PLAN - 雲端協作)', renderer: renderPlan },
+        guide: { title: '深度導覽 (GUIDE - 沖繩TOP10)', renderer: renderGuide },
+        wallet: { title: '記帳與匯率 (WALLET - 個人紀錄)', renderer: renderWallet },
+        lists: { title: '清單與備忘 (LISTS - 個人紀錄)', renderer: renderLists },
+        info: { title: '實用資訊 (INFO)', renderer: renderInfo }
+    };
+
+    function switchTab(tabName) {
+        const contentArea = document.getElementById('app-content');
+        const titleArea = document.getElementById('app-title');
+        const navButtons = document.querySelectorAll('.nav-icon');
+
+        if (!TABS[tabName]) return;
+
+        // 停止舊的 Firestore 監聽器
+        if (unsubscribeItinerary) {
+            unsubscribeItinerary();
+            unsubscribeItinerary = null;
+            console.log("Firestore: Unsubscribed from previous Plan listener.");
+        }
+
+        // 更新導航列樣式
+        navButtons.forEach(btn => {
+            const isActive = btn.getAttribute('onclick').includes(`'${tabName}'`);
+            btn.classList.toggle('primary-bg', isActive);
+            btn.classList.toggle('text-card', isActive);
+            btn.classList.toggle('text-white', !isActive);
+            btn.classList.toggle('bg-white/10', !isActive);
+        });
+
+        // 更新標題
+        titleArea.textContent = TABS[tabName].title;
+        // 清空並渲染內容
+        contentArea.innerHTML = '';
+        TABS[tabName].renderer(contentArea);
+
+        // 儲存當前 Tab
+        localStorage.setItem(LS_KEYS.CURRENT_TAB, tabName);
+    }
+
+    // ====================================================================
+    // 4. PLAN (行程表 - FIREBASE 雲端協作) 渲染與邏輯
+    // ====================================================================
+
+    function getItineraryCollectionRef() {
+        if (typeof db === 'undefined' || typeof appId === 'undefined') {
+            console.error("Firestore or App ID not initialized.");
+            return null;
+        }
+        // 公共資料路徑: /artifacts/{appId}/public/data/itineraries
+        return firebaseModules.collection(db, `artifacts/${appId}/public/data/itineraries`);
+    }
+
+    // 實時獲取行程數據
+    function fetchItineraryRealtime(container) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) {
+             container.innerHTML = '<p class="text-center text-red-500 p-8">雲端資料庫未連線或驗證失敗，無法載入行程。</p>';
+             return;
+        }
+
+        // 設置 Loading 狀態
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-spinner fa-spin text-3xl primary-text"></i>
+                <p class="mt-4 text-gray-600">正在同步雲端行程數據...</p>
+            </div>
+        `;
+
+
+        // 設置 Firestore 實時監聽器
+        const q = firebaseModules.query(itineraryRef, firebaseModules.orderBy('order', 'asc'));
+
+        unsubscribeItinerary = firebaseModules.onSnapshot(q, (snapshot) => {
+            console.log("Firestore: Itinerary data received.");
+            cloudItineraryData = snapshot.docs.map(doc => ({
+                ...doc.data(),
+                docId: doc.id
+            }));
+
+            // 如果雲端數據為空，則使用預設行程初始化雲端
+            if (cloudItineraryData.length === 0) {
+                console.log("Firestore: Cloud is empty, initializing with default itinerary.");
+                DEFAULT_ITINERARY.forEach(dayPlan => {
+                     // 使用 setDoc 確保 Doc ID 為 D1, D2...
+                    firebaseModules.setDoc(firebaseModules.doc(itineraryRef, dayPlan.id), dayPlan)
+                    .catch(e => console.error("Error setting default itinerary:", e));
+                });
+                return; // 等待下一個 Snapshot 觸發渲染
+            }
+
+            renderItineraryUI(container, cloudItineraryData);
+
+        }, (error) => {
+            console.error("Firestore Realtime Listener Error:", error);
+            container.innerHTML = `<p class="text-center text-red-500 p-8">雲端同步錯誤: ${error.message}</p>`;
+        });
+    }
+
+    function renderPlan(container) {
+        if (!window.isAuthReady) {
+            container.innerHTML = '<p class="text-center py-12 text-gray-500">正在等待使用者驗證，以連接雲端行程...</p>';
+            return;
+        }
+
+        // 渲染頂部資訊
+        const infoHtml = `
+            <div class="mb-6 space-y-4">
+                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-blue-400">
+                    <h3 class="font-bold text-gray-700 mb-1"><i class="fa-solid fa-plane-up mr-2"></i>航班資訊 (高雄 KHH ⇌ 沖繩 OKA)</h3>
+                    <p class="text-sm text-gray-600">去程: ${STATIC_TRAVEL_DATA.flight.outbound}</p>
+                    <p class="text-sm text-gray-600">回程: ${STATIC_TRAVEL_DATA.flight.return}</p>
+                </div>
+                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-yellow-400">
+                    <h3 class="font-bold text-gray-700 mb-1"><i class="fa-solid fa-hotel mr-2"></i>住宿資訊 (4晚)</h3>
+                    <p class="text-sm text-gray-600">${STATIC_TRAVEL_DATA.accommodation.name}</p>
+                    <p class="text-xs text-gray-500 mt-1">${STATIC_TRAVEL_DATA.accommodation.address}</p>
+                </div>
+                <div class="text-center pt-2">
+                    <button onclick="showAddDayModal()" class="primary-bg text-white px-4 py-2 rounded-full font-bold shadow-md hover:opacity-90">
+                        <i class="fa-solid fa-plus mr-1"></i> 新增行程日
+                    </button>
+                </div>
+            </div>
+            <div id="itinerary-list"></div>
+        `;
+        container.innerHTML = infoHtml;
+        fetchItineraryRealtime(document.getElementById('itinerary-list'));
+    }
+
+    // 渲染行程列表 (由 onSnapshot 觸發)
+    function renderItineraryUI(container, data) {
+        const listHtml = data.map(dayPlan => `
+            <div class="mb-8 p-4 bg-card rounded-xl shadow-lg border border-gray-100 relative" data-doc-id="${dayPlan.docId}">
+                 <div class="absolute top-3 right-3 flex space-x-2">
+                    <button onclick="showEditDayModal('${dayPlan.docId}', '${dayPlan.day}', '${dayPlan.date}', ${dayPlan.order})" class="text-gray-500 hover:text-blue-600"><i class="fa-solid fa-edit text-sm"></i></button>
+                    <button onclick="confirmDeleteDay('${dayPlan.docId}', '${dayPlan.day}')" class="text-gray-500 hover:text-red-600"><i class="fa-solid fa-trash-alt text-sm"></i></button>
+                </div>
+                <!-- 日期標題 -->
+                <div class="flex items-center mb-4 pb-2 border-b border-gray-200">
+                    <span class="secondary-bg text-white font-bold text-sm px-3 py-1 rounded-full mr-3">${dayPlan.day}</span>
+                    <h2 class="text-lg font-medium secondary-text">${dayPlan.date}</h2>
+                </div>
+
+                <!-- 行程時間軸 -->
+                <div class="space-y-6">
+                    ${(dayPlan.events || []).map((event, index) => `
+                        <div class="timeline-item ${event.type === 'highlight' ? 'timeline-highlight' : ''} group">
+                            <div class="ml-4 flex justify-between items-start">
+                                <div class="flex-grow">
+                                    <p class="text-xs text-gray-500 font-mono">${event.time}</p>
+                                    <p class="text-base font-semibold text-gray-800 flex items-center">
+                                        <i class="${getIconForEventType(event.type)} mr-2 text-sm"></i>
+                                        ${event.name}
+                                    </p>
+                                    ${event.location ? `
+                                        <div class="mt-2 space-x-2">
+                                            <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
+                                                <i class="fa-solid fa-map-marker-alt mr-1"></i> Google Maps
+                                            </a>
+                                            ${event.type === 'food' ? `
+                                                <a href="https://www.google.com/search?q=${encodeURIComponent(event.name + ' 食記 推薦')}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 secondary-bg text-white rounded-full transition duration-300 hover:opacity-80">
+                                                    <i class="fa-solid fa-book-open mr-1"></i> 查看食記
+                                                </a>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div class="flex-shrink-0 ml-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition duration-300">
+                                    <button onclick="showEditEventModal('${dayPlan.docId}', ${index})" class="text-gray-500 hover:text-blue-600 p-1"><i class="fa-solid fa-pencil-alt text-xs"></i></button>
+                                    <button onclick="confirmDeleteEvent('${dayPlan.docId}', ${index}, '${event.name}')" class="text-gray-500 hover:text-red-600 p-1"><i class="fa-solid fa-times text-xs"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                    <div class="text-center pt-4">
+                        <button onclick="showAddEventModal('${dayPlan.docId}')" class="text-sm secondary-text hover:underline">
+                            <i class="fa-solid fa-plus-circle mr-1"></i> 新增活動
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        container.innerHTML = listHtml;
+    }
+
+    // Helper: 獲取活動圖標
+    function getIconForEventType(type) {
+        switch (type) {
+            case 'food': return 'fa-solid fa-utensils text-green-600';
+            case 'sight': return 'fa-solid fa-camera-retro text-yellow-600';
+            case 'highlight': return 'fa-solid fa-star primary-text';
+            case 'info': return 'fa-solid fa-plane-departure text-blue-600';
+            case 'activity': return 'fa-solid fa-shopping-bag text-purple-600';
+            default: return 'fa-solid fa-map-marker-alt text-gray-500';
+        }
+    }
+
+    // ================= PLAN - Firestore 寫入/修改邏輯 =================
+
+    async function addDayToFirestore(day, date, order) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) return;
+
+        showLoading('正在新增行程日...');
+
+        try {
+            const newDay = {
+                day: day,
+                date: date,
+                order: parseInt(order),
+                events: []
+            };
+            // 使用 addDoc 讓 Firestore 自動生成 Doc ID
+            await firebaseModules.addDoc(itineraryRef, newDay);
+            alertMessage('行程日新增成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error adding document:", e);
+            alertMessage('新增失敗！請檢查連線。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function updateDayInFirestore(docId, day, date, order) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) return;
+
+        showLoading('正在更新行程日資訊...');
+
+        try {
+            const dayRef = firebaseModules.doc(itineraryRef, docId);
+            await firebaseModules.updateDoc(dayRef, {
+                day: day,
+                date: date,
+                order: parseInt(order)
+            });
+            alertMessage('行程日更新成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error updating document:", e);
+            alertMessage('更新失敗！請檢查連線。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function deleteDayFromFirestore(docId) {
+        const itineraryRef = getItineraryCollectionRef();
+        if (!itineraryRef) return;
+
+        showLoading('正在刪除行程日...');
+
+        try {
+            const dayRef = firebaseModules.doc(itineraryRef, docId);
+            await firebaseModules.deleteDoc(dayRef);
+            alertMessage('行程日刪除成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error deleting document:", e);
+            alertMessage('刪除失敗！請檢查連線。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function addEventToDay(docId, eventData) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay) return;
+
+        showLoading('正在新增活動...');
+        const updatedEvents = [...(currentDay.events || []), eventData];
+        updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
+
+        try {
+            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
+                events: updatedEvents
+            });
+            alertMessage('活動新增成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error adding event:", e);
+            alertMessage('新增失敗！請檢查連線。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function updateEventInDay(docId, eventIndex, eventData) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay) return;
+
+        showLoading('正在更新活動...');
+        const updatedEvents = [...(currentDay.events || [])];
+        updatedEvents[eventIndex] = eventData;
+        updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
+
+        try {
+            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
+                events: updatedEvents
+            });
+            alertMessage('活動更新成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error updating event:", e);
+            alertMessage('更新失敗！請檢查連線。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function deleteEventFromDay(docId, eventIndex) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay) return;
+
+        showLoading('正在刪除活動...');
+        const updatedEvents = (currentDay.events || []).filter((_, index) => index !== eventIndex);
+
+        try {
+            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
+                events: updatedEvents
+            });
+            alertMessage('活動刪除成功！', 'primary-bg');
+        } catch (e) {
+            console.error("Error deleting event:", e);
+            alertMessage('刪除失敗！請檢查連線。', 'secondary-bg');
+        } finally {
+            hideLoading();
+        }
+    }
+
+
+    // ================= PLAN - 模態框 (Modal) 邏輯 =================
+
+    // 泛用模態框 HTML 結構
+    function createModal(id, title, bodyHtml, confirmText, onConfirm, cancelText = '取消') {
+        const existing = document.getElementById(id);
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = id;
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4 transition-opacity duration-300';
+        modal.innerHTML = `
+            <div class="bg-card w-full max-w-sm rounded-xl shadow-2xl p-6 transform scale-95 transition-transform duration-300">
+                <h3 class="text-xl font-bold primary-text mb-4 border-b pb-2">${title}</h3>
+                <div id="${id}-body">${bodyHtml}</div>
+                <div class="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                    <button onclick="closeModal('${id}')" class="text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">${cancelText}</button>
+                    <button id="${id}-confirm" class="primary-bg text-white px-4 py-2 rounded-lg font-bold hover:opacity-90">${confirmText}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // 設置確認按鈕事件
+        document.getElementById(`${id}-confirm`).onclick = onConfirm;
+
+        // 顯示動畫
+        setTimeout(() => modal.classList.add('opacity-100'), 10);
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.classList.remove('opacity-100');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.remove(), 300);
+        }
+    }
+
+    function showAddDayModal() {
+        const lastDayOrder = cloudItineraryData.length > 0 ? Math.max(...cloudItineraryData.map(d => d.order)) : 0;
+        const nextOrder = lastDayOrder + 1;
+        const body = `
+            <div class="space-y-3">
+                <input type="text" id="modal-day-name" placeholder="例如: D6 (自由活動)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="text" id="modal-day-date" placeholder="例如: 03/12 (四)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="number" id="modal-day-order" value="${nextOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
+            </div>
+        `;
+
+        createModal('add-day-modal', '新增行程日', body, '確認新增', () => {
+            const day = document.getElementById('modal-day-name').value;
+            const date = document.getElementById('modal-day-date').value;
+            const order = document.getElementById('modal-day-order').value;
+            if (day && date && order) {
+                addDayToFirestore(day, date, order);
+                closeModal('add-day-modal');
+            } else {
+                alertMessage('請填寫完整資訊！', 'secondary-bg');
+            }
+        });
+    }
+
+    function showEditDayModal(docId, currentDay, currentDate, currentOrder) {
+        const body = `
+            <div class="space-y-3">
+                <label class="text-xs text-gray-500">行程日名稱 (例如: D1)</label>
+                <input type="text" id="modal-day-name" value="${currentDay}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">日期 (例如: 03/07 (六))</label>
+                <input type="text" id="modal-day-date" value="${currentDate}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">排序 (數字越小越前面)</label>
+                <input type="number" id="modal-day-order" value="${currentOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
+            </div>
+        `;
+
+        createModal('edit-day-modal', '編輯行程日資訊', body, '儲存變更', () => {
+            const day = document.getElementById('modal-day-name').value;
+            const date = document.getElementById('modal-day-date').value;
+            const order = document.getElementById('modal-day-order').value;
+            if (day && date && order) {
+                updateDayInFirestore(docId, day, date, order);
+                closeModal('edit-day-modal');
+            } else {
+                alertMessage('請填寫完整資訊！', 'secondary-bg');
+            }
+        });
+    }
+
+    function confirmDeleteDay(docId, dayName) {
+        const body = `<p>您確定要刪除 **${dayName}** 這一天的所有行程嗎？此操作無法復原。</p>`;
+        createModal('confirm-delete-day-modal', '確認刪除行程日', body, '確定刪除', () => {
+            deleteDayFromFirestore(docId);
+            closeModal('confirm-delete-day-modal');
+        }, '取消');
+    }
+
+    function showAddEventModal(docId) {
+        const body = `
+            <form id="event-form" class="space-y-3">
+                <input type="text" id="modal-event-time" placeholder="時間 (例如: 10:30)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="text" id="modal-event-name" placeholder="活動名稱 (例如: 午餐/景點名稱)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <input type="text" id="modal-event-location" placeholder="地點名稱 (用於 Google Maps 連結，可選)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
+                    <option value="activity">活動/購物 (activity)</option>
+                    <option value="food">用餐 (food)</option>
+                    <option value="sight">景點 (sight)</option>
+                    <option value="highlight">重要集合/提醒 (highlight)</option>
+                    <option value="info">交通/資訊 (info)</option>
+                </select>
+            </form>
+        `;
+
+        createModal('add-event-modal', '新增活動', body, '確認新增', () => {
+            const time = document.getElementById('modal-event-time').value;
+            const name = document.getElementById('modal-event-name').value;
+            const location = document.getElementById('modal-event-location').value;
+            const type = document.getElementById('modal-event-type').value;
+
+            if (time && name) {
+                const eventData = { time, name, location: location || undefined, type };
+                addEventToDay(docId, eventData);
+                closeModal('add-event-modal');
+            } else {
+                alertMessage('時間和活動名稱為必填！', 'secondary-bg');
+            }
+        });
+    }
+
+    function showEditEventModal(docId, eventIndex) {
+        const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        const currentEvent = currentDay.events[eventIndex];
+
+        const body = `
+            <form id="event-form" class="space-y-3">
+                <label class="text-xs text-gray-500">時間</label>
+                <input type="text" id="modal-event-time" value="${currentEvent.time}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">活動名稱</label>
+                <input type="text" id="modal-event-name" value="${currentEvent.name}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">地點名稱 (Google Maps)</label>
+                <input type="text" id="modal-event-location" value="${currentEvent.location || ''}" placeholder="可選" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">活動類型</label>
+                <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
+                    <option value="activity" ${currentEvent.type === 'activity' ? 'selected' : ''}>活動/購物 (activity)</option>
+                    <option value="food" ${currentEvent.type === 'food' ? 'selected' : ''}>用餐 (food)</option>
+                    <option value="sight" ${currentEvent.type === 'sight' ? 'selected' : ''}>景點 (sight)</option>
+                    <option value="highlight" ${currentEvent.type === 'highlight' ? 'selected' : ''}>重要集合/提醒 (highlight)</option>
+                    <option value="info" ${currentEvent.type === 'info' ? 'selected' : ''}>交通/資訊 (info)</option>
+                </select>
+            </form>
+        `;
+
+        createModal('edit-event-modal', '編輯活動', body, '儲存變更', () => {
+            const time = document.getElementById('modal-event-time').value;
+            const name = document.getElementById('modal-event-name').value;
+            const location = document.getElementById('modal-event-location').value;
+            const type = document.getElementById('modal-event-type').value;
+
+            if (time && name) {
+                const eventData = { time, name, location: location || undefined, type };
+                updateEventInDay(docId, eventIndex, eventData);
+                closeModal('edit-event-modal');
+            } else {
+                alertMessage('時間和活動名稱為必填！', 'secondary-bg');
+            }
+        });
+    }
+
+    function confirmDeleteEvent(docId, eventIndex, eventName) {
+        const body = `<p>您確定要刪除 **${eventName}** 這個活動嗎？</p>`;
+        createModal('confirm-delete-event-modal', '確認刪除活動', body, '確定刪除', () => {
+            deleteEventFromDay(docId, eventIndex);
+            closeModal('confirm-delete-event-modal');
+        }, '取消');
+    }
+
+    // ====================================================================
+    // 5. GUIDE (深度導覽) 渲染函數 - 已更新為沖繩那霸 TOP 10
+    // ====================================================================
+
+    function renderGuide(container) {
+        const topSpots = [
+            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", imgUrl: "https://i.imgur.com/k6lP09r.jpeg", mapCoords: "127.684,26.215,127.695,26.225" },
+            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", imgUrl: "https://i.imgur.com/1Gv1b0f.jpeg", mapCoords: "127.674,26.219,127.684,26.229" },
+            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", imgUrl: "https://i.imgur.com/3Z7Z2Fw.jpeg", mapCoords: "127.717,26.216,127.727,26.226" },
+            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", imgUrl: "https://i.imgur.com/8Qp21pT.jpeg" },
+            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", imgUrl: "https://i.imgur.com/x0sN8Xn.jpeg" },
+            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", imgUrl: "https://i.imgur.com/pYxR5yB.jpeg" },
+            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", imgUrl: "https://i.imgur.com/9nZlF5x.jpeg" },
+            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", imgUrl: "https://i.imgur.com/A6j4r9s.jpeg" },
+            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", imgUrl: "https://i.imgur.com/4hJ0TqT.jpeg" },
+            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", imgUrl: "https://i.imgur.com/qLw0gS6.jpeg" }
+        ];
+
+        const topFoods = [
+            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", imgUrl: "https://i.imgur.com/sS7sXQJ.jpeg" },
+            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", imgUrl: "https://i.imgur.com/xT5u6Xz.jpeg" },
+            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", imgUrl: "https://i.imgur.com/gK2S8pT.jpeg" },
+            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", imgUrl: "https://i.imgur.com/c4Y2K0f.jpeg" },
+            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", imgUrl: "https://i.imgur.com/dK7cR1k.jpeg" },
+            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", imgUrl: "https://i.imgur.com/z0m7T0y.jpeg" },
+            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", imgUrl: "https://i.imgur.com/vH1yU2j.jpeg" },
+            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", imgUrl: "https://i.imgur.com/rN5L1oT.jpeg" },
+            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", imgUrl: "https://i.imgur.com/2Xy3z3F.jpeg" },
+            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", imgUrl: "https://i.imgur.com/pZf4lXq.jpeg" }
+        ];
+
+        const content = `
+            <div class="space-y-8">
+                <!-- 沖繩 TOP 10 景點 (那霸為主) -->
+                <div class="bg-card p-6 rounded-xl shadow-lg border-l-4 border-primary">
+                    <h2 class="text-2xl font-bold primary-text mb-4 flex items-center"><i class="fa-solid fa-map-location-dot mr-2"></i> 沖繩 TOP 10 交通便利景點</h2>
+                    <p class="text-sm text-gray-500 mb-6">以那霸市區為中心，搭乘單軌電車或步行可達的精選景點。</p>
+                    <div class="space-y-6">
+                        ${topSpots.map((spot, index) => `
+                            <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
+                                <img src="${spot.imgUrl}" alt="" onerror="this.onerror=null;this.src='https://placehold.co/100x75/8D9B8B/F7F3E8?text=Image';" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
+                                <div class="flex-grow">
+                                    <h3 class="font-bold secondary-text text-lg">${index + 1}. ${spot.name}</h3>
+                                    <p class="text-sm text-gray-600 mt-1">${spot.desc}</p>
+                                    ${spot.mapCoords ? `
+                                        <div class="mt-2">
+                                            <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.name)}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
+                                                <i class="fa-solid fa-map-marker-alt mr-1"></i> Google Maps
+                                            </a>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- 沖繩 TOP 10 美食 -->
+                 <div class="bg-card p-6 rounded-xl shadow-lg border-l-4 border-secondary">
+                    <h2 class="text-2xl font-bold secondary-text mb-4 flex items-center"><i class="fa-solid fa-bowl-food mr-2"></i> 沖繩 TOP 10 必嚐美食</h2>
+                    <p class="text-sm text-gray-500 mb-6">絕不能錯過的當地特色料理和知名小吃。</p>
+                     <div class="space-y-6">
+                        ${topFoods.map((food, index) => `
+                            <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
+                                <img src="${food.imgUrl}" alt="[Image of ${food.name}]" onerror="this.onerror=null;this.src='https://placehold.co/100x75/C89088/F7F3E8?text=Food';" class="w-24 h-20 object-cover rounded-lg mr-4 flex-shrink-0 shadow-md">
+                                <div class="flex-grow">
+                                    <h3 class="font-bold primary-text text-lg">${index + 1}. ${food.name}</h3>
+                                    <p class="text-sm text-gray-600 mt-1">${food.brief}</p>
+                                     <a href="https://www.google.com/search?q=${encodeURIComponent(food.name + ' 沖繩 推薦')}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full mt-2 transition duration-300 hover:opacity-80">
+                                        <i class="fa-solid fa-magnifying-glass mr-1"></i> 搜尋食記
+                                    </a>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- 國際通 OpenStreetMap -->
+                <div class="bg-card p-6 rounded-xl shadow-lg border border-gray-100">
+                    <h2 class="text-2xl font-bold primary-text mb-3">📍 國際通地理位置</h2>
+                    <!-- 嵌入 OpenStreetMap Iframe (沖繩國際通座標) -->
+                    <div class="w-full h-64 border-2 border-gray-300 rounded-lg overflow-hidden shadow-inner mt-4">
+                        <iframe
+                            width="100%"
+                            height="100%"
+                            frameborder="0"
+                            scrolling="no"
+                            marginheight="0"
+                            marginwidth="0"
+                            src="https://www.openstreetmap.org/export/embed.html?bbox=127.684,26.215,127.695,26.225&amp;layer=mapnik&amp;marker=26.220,127.689"
+                            style="border: 1px solid black"
+                        ></iframe>
+                    </div>
+                    <small class="text-xs text-gray-500 mt-2 block text-center">國際通區域地圖</small>
+                </div>
+
+            </div>
+        `;
+        container.innerHTML = content;
+    }
+
+
+    // ====================================================================
+    // 6. WALLET (記帳與匯率) 渲染與邏輯 (維持 LocalStorage)
+    // ====================================================================
+
+    let currentExchangeRate = initialRate;
+
+    function renderWallet(container) {
+        currentExchangeRate = parseFloat(localStorage.getItem(TWD_RATE_KEY)) || initialRate;
+
+        const html = `
+            <div class="space-y-6">
+                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-yellow-400 text-sm text-gray-700 font-medium">
+                    <i class="fa-solid fa-user-lock mr-2 text-yellow-500"></i> **記帳資料僅儲存在本機**，不與雲端同步。
+                </div>
+                <!-- 匯率換算器 -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-yellow-400">
+                    <h2 class="text-xl font-bold secondary-text mb-3 flex items-center"><i class="fa-solid fa-calculator mr-2"></i> 即時匯率換算</h2>
+                    <div class="flex items-center justify-between mb-3 text-sm">
+                        <span class="text-gray-600">當前匯率 (1 JPY ≈ TWD):</span>
+                        <div class="flex items-center">
+                            <input type="number" step="0.001" id="rate-input" value="${currentExchangeRate.toFixed(4)}" class="w-20 text-right p-1 border rounded-md text-gray-700 focus:ring primary-text">
+                            <button onclick="updateExchangeRate()" class="ml-2 secondary-bg text-white px-2 py-1 rounded-md text-xs hover:opacity-90">更新</button>
+                        </div>
+                    </div>
+                    <input type="text" id="calc-input" placeholder="輸入算式 (例如: 500+200*3)" class="w-full text-2xl font-mono p-3 mb-3 border rounded-lg focus:ring primary-text text-right" onkeyup="if(event.key === 'Enter') performCalculation()">
+                    <div class="flex justify-between items-center bg-gray-100 p-3 rounded-lg">
+                        <div>
+                            <p class="text-xs text-gray-500">日幣 (JPY) 總額</p>
+                            <p id="calc-jpy" class="text-xl font-bold text-gray-800">0</p>
+                        </div>
+                        <i class="fa-solid fa-arrows-right-left primary-text"></i>
+                        <div>
+                            <p class="text-xs text-gray-500 text-right">台幣 (TWD) 估算</p>
+                            <p id="calc-twd" class="text-xl font-bold primary-text text-right">0</p>
+                        </div>
+                    </div>
+                    <button onclick="performCalculation()" class="w-full primary-bg text-white p-3 mt-3 rounded-lg font-bold shadow-md hover:opacity-90">換算 / 計算 (=)</button>
+                </div>
+
+                <!-- 記帳功能 -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-primary">
+                    <h2 class="text-xl font-bold primary-text mb-4 flex items-center"><i class="fa-solid fa-pen-to-square mr-2"></i> 新增記帳</h2>
+                    <form id="expense-form" class="space-y-3">
+                        <div>
+                            <label for="item-name" class="text-sm font-medium text-gray-700">品項名稱</label>
+                            <input type="text" id="item-name" placeholder="晚餐/門票/零食..." required class="w-full p-2 border rounded-md focus:ring primary-text">
+                        </div>
+                        <div>
+                            <label for="item-amount" class="text-sm font-medium text-gray-700">日幣金額 (JPY)</label>
+                            <input type="number" id="item-amount" placeholder="5000" required class="w-full p-2 border rounded-md focus:ring primary-text">
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <label for="photo-upload" class="primary-bg text-white px-4 py-2 rounded-lg font-medium cursor-pointer shadow-md hover:opacity-90 transition duration-150">
+                                <i class="fa-solid fa-camera mr-2"></i> 拍照 / 上傳照片
+                            </label>
+                            <input type="file" id="photo-upload" accept="image/*" class="file-input-hidden" onchange="previewAndCompressImage(event)">
+                            <img id="photo-preview" class="w-12 h-12 rounded-lg object-cover border hidden" alt="照片預覽">
+                            <input type="hidden" id="base64-image" value="">
+                        </div>
+                        <button type="submit" class="w-full secondary-bg text-white p-3 rounded-lg font-bold shadow-md hover:opacity-90">記錄消費</button>
+                    </form>
+                </div>
+
+                <!-- 記帳歷史列表 -->
+                <div class="mt-8">
+                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-list-ul mr-2"></i> 記帳歷史</h2>
+                    <div id="expense-list" class="space-y-3">
+                        <!-- 歷史記錄會在此處渲染 -->
+                    </div>
+                    <div id="expense-summary" class="mt-4 p-4 bg-white rounded-xl shadow-lg text-center font-bold">
+                        <p class="text-gray-700">總計：<span class="text-lg primary-text" id="total-jpy">0 JPY</span> (<span class="text-lg secondary-text" id="total-twd">0 TWD</span>)</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.innerHTML = html;
+
+        document.getElementById('expense-form').onsubmit = addExpense;
+        loadExpenses();
+    }
+
+    // [WALLET 相關的 JS 函數 (updateExchangeRate, performCalculation, safeEval, previewAndCompressImage, addExpense, loadExpenses, deleteExpense) 維持不變，繼續使用 LocalStorage]
+    function updateExchangeRate() { /* ... */
+        const input = document.getElementById('rate-input');
+        const newRate = parseFloat(input.value);
+        if (newRate > 0) {
+            currentExchangeRate = newRate;
+            localStorage.setItem(TWD_RATE_KEY, newRate.toString());
+            performCalculation();
+            alertMessage('匯率更新成功！', 'primary-bg');
+        } else {
+            alertMessage('請輸入有效的匯率！', 'secondary-bg');
+        }
+    }
+
+    function performCalculation() { /* ... */
+        const input = document.getElementById('calc-input');
+        const jpyDisplay = document.getElementById('calc-jpy');
+        const twdDisplay = document.getElementById('calc-twd');
+        const expression = input.value.trim();
+
+        if (!expression) {
+            jpyDisplay.textContent = '0';
+            twdDisplay.textContent = '0';
+            return;
+        }
+
+        try {
+            const resultJPY = safeEval(expression);
+            if (typeof resultJPY === 'number' && isFinite(resultJPY)) {
+                const resultTWD = resultJPY * currentExchangeRate;
+                jpyDisplay.textContent = resultJPY.toFixed(0).toLocaleString('en-US');
+                twdDisplay.textContent = resultTWD.toFixed(0).toLocaleString('en-US');
+            } else {
+                jpyDisplay.textContent = '錯誤';
+                twdDisplay.textContent = '錯誤';
+            }
+        } catch (e) {
+            jpyDisplay.textContent = '無效算式';
+            twdDisplay.textContent = '0';
+        }
+    }
+
+    function safeEval(expression) { /* ... */
+        const safeExpression = expression.replace(/[^-()\d/*+. ]/g, '');
+        return new Function('return ' + safeExpression)();
+    }
+
+    function previewAndCompressImage(event) { /* ... */
+        const file = event.target.files[0];
+        const preview = document.getElementById('photo-preview');
+        const base64Input = document.getElementById('base64-image');
+
+        if (!file) {
+            preview.classList.add('hidden');
+            base64Input.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 200;
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+
+                preview.src = compressedBase64;
+                preview.classList.remove('hidden');
+                base64Input.value = compressedBase64;
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function addExpense(e) { /* ... */
+        e.preventDefault();
+
+        const nameInput = document.getElementById('item-name');
+        const amountInput = document.getElementById('item-amount');
+        const base64Image = document.getElementById('base64-image');
+
+        const expense = {
+            id: crypto.randomUUID(),
+            name: nameInput.value,
+            jpy: parseFloat(amountInput.value),
+            image: base64Image.value,
+            date: new Date().toISOString()
+        };
+
+        if (isNaN(expense.jpy) || expense.jpy <= 0) {
+            alertMessage('請輸入有效的日幣金額！', 'secondary-bg');
+            return;
+        }
+
+        const expenses = loadData(LS_KEYS.WALLET, []);
+        expenses.unshift(expense);
+        saveData(LS_KEYS.WALLET, expenses);
+
+        e.target.reset();
+        document.getElementById('photo-preview').classList.add('hidden');
+        base64Image.value = '';
+
+        loadExpenses();
+        alertMessage('消費記錄成功！', 'primary-bg');
+    }
+
+    function loadExpenses() { /* ... */
+        const expenses = loadData(LS_KEYS.WALLET, []);
+        const listContainer = document.getElementById('expense-list');
+        const totalJPYDisplay = document.getElementById('total-jpy');
+        const totalTWDDisplay = document.getElementById('total-twd');
+
+        if (!listContainer || !totalJPYDisplay) return;
+
+        let totalJPY = 0;
+        const rate = parseFloat(localStorage.getItem(TWD_RATE_KEY)) || initialRate;
+
+        if (expenses.length === 0) {
+            listContainer.innerHTML = '<p class="text-center text-gray-500 p-4">目前沒有記帳記錄。</p>';
+        } else {
+            listContainer.innerHTML = expenses.map(item => {
+                totalJPY += item.jpy;
+                const twd = item.jpy * rate;
+                return `
+                    <div class="flex items-center p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition duration-150">
+                        ${item.image ? `
+                            <img src="${item.image}" alt="收據" class="w-12 h-12 object-cover rounded-md mr-3 flex-shrink-0">
+                        ` : `
+                            <div class="w-12 h-12 bg-gray-200 rounded-md mr-3 flex-shrink-0 flex items-center justify-center text-gray-500"><i class="fa-solid fa-image"></i></div>
+                        `}
+                        <div class="flex-grow min-w-0">
+                            <p class="font-medium text-gray-800 truncate">${item.name}</p>
+                            <p class="text-xs text-gray-500">${new Date(item.date).toLocaleDateString('zh-TW')} ${new Date(item.date).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                        <div class="text-right ml-4 flex-shrink-0">
+                            <p class="font-bold primary-text">${item.jpy.toFixed(0).toLocaleString('en-US')} JPY</p>
+                            <p class="text-xs text-gray-500">${twd.toFixed(0).toLocaleString('en-US')} TWD</p>
+                        </div>
+                        <button onclick="deleteExpense('${item.id}')" class="ml-2 text-red-400 hover:text-red-600 transition duration-150 p-1">
+                            <i class="fa-solid fa-trash-alt text-sm"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        totalJPYDisplay.textContent = totalJPY.toFixed(0).toLocaleString('en-US') + ' JPY';
+        totalTWDDisplay.textContent = (totalJPY * rate).toFixed(0).toLocaleString('en-US') + ' TWD';
+    }
+
+    function deleteExpense(id) { /* ... */
+        let expenses = loadData(LS_KEYS.WALLET, []);
+        const initialLength = expenses.length;
+        expenses = expenses.filter(item => item.id !== id);
+
+        if (expenses.length < initialLength) {
+            saveData(LS_KEYS.WALLET, expenses);
+            loadExpenses();
+            alertMessage('刪除成功！', 'primary-bg');
+        }
+    }
+
+
+    // ====================================================================
+    // 7. LISTS (清單與備忘錄) 渲染與邏輯 (維持 LocalStorage)
+    // ====================================================================
+
+    function renderLists(container) {
+        const html = `
+            <div class="space-y-8">
+                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-primary/50 text-sm text-gray-700 font-medium">
+                    <i class="fa-solid fa-user-lock mr-2 text-primary"></i> **清單與備忘錄** 僅儲存在本機。
+                </div>
+                <!-- 行前準備清單 (CheckList) -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-primary">
+                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-check-double mr-2"></i> 行前準備 CheckList</h2>
+                    <div id="checklist-container" class="space-y-2">
+                        <!-- 清單項目會在此處渲染 -->
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-gray-100 flex">
+                        <input type="text" id="new-check-item" placeholder="新增自訂項目..." class="flex-grow p-2 border rounded-l-md focus:ring text-gray-700">
+                        <button onclick="addChecklistItem()" class="primary-bg text-white px-3 py-2 rounded-r-md hover:opacity-90"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <!-- 個人備忘錄 (Memos) -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-secondary">
+                    <h2 class="text-xl font-bold secondary-text mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2"></i> 個人備忘錄</h2>
+                    <textarea id="memo-input" rows="3" placeholder="輸入您的備忘錄，網址會自動轉換為按鈕..." class="w-full p-3 border rounded-md focus:ring text-gray-700"></textarea>
+                    <button onclick="saveMemo()" class="w-full secondary-bg text-white p-2 mt-2 rounded-md font-bold shadow-md hover:opacity-90">儲存備忘</button>
+
+                    <div id="memo-list" class="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                        <!-- 備忘錄列表會在此處渲染 -->
+                    </div>
+                </div>
+            </div>
+        `;
+        container.innerHTML = html;
+        loadChecklist();
+        loadMemos();
+    }
+
+    // [LISTS 相關的 JS 函數 (loadChecklist, toggleChecklistItem, addChecklistItem, deleteChecklistItem, saveMemo, loadMemos) 維持不變，繼續使用 LocalStorage]
+    function loadChecklist() { /* ... */
+        const list = loadData(LS_KEYS.CHECKLIST, []);
+        const container = document.getElementById('checklist-container');
+        if (!container) return;
+
+        container.innerHTML = list.map(item => `
+            <div class="flex items-center p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition duration-150">
+                <input type="checkbox" id="check-${item.id}" ${item.checked ? 'checked' : ''} onchange="toggleChecklistItem('${item.id}')" class="w-5 h-5 primary-text rounded-md border-gray-300 focus:ring-primary cursor-pointer">
+                <label for="check-${item.id}" class="ml-3 text-base ${item.checked ? 'line-through text-gray-500' : 'text-gray-800'} flex-grow cursor-pointer">${item.text}</label>
+                <button onclick="deleteChecklistItem('${item.id}')" class="text-red-400 hover:text-red-600 transition duration-150 p-1">
+                    <i class="fa-solid fa-times text-sm"></i>
+                </button>
+            </div>
+        `).join('');
+    }
+
+    function toggleChecklistItem(id) { /* ... */
+        const list = loadData(LS_KEYS.CHECKLIST, []);
+        const item = list.find(i => i.id === id);
+        if (item) {
+            item.checked = !item.checked;
+            saveData(LS_KEYS.CHECKLIST, list);
+            loadChecklist();
+        }
+    }
+
+    function addChecklistItem() { /* ... */
+        const input = document.getElementById('new-check-item');
+        const text = input.value.trim();
+        if (text) {
+            const list = loadData(LS_KEYS.CHECKLIST, []);
+            list.push({ id: crypto.randomUUID(), text, checked: false });
+            saveData(LS_KEYS.CHECKLIST, list);
+            input.value = '';
+            loadChecklist();
+        }
+    }
+
+    function deleteChecklistItem(id) { /* ... */
+        let list = loadData(LS_KEYS.CHECKLIST, []);
+        list = list.filter(item => item.id !== id);
+        saveData(LS_KEYS.CHECKLIST, list);
+        loadChecklist();
+    }
+
+    function saveMemo() { /* ... */
+        const input = document.getElementById('memo-input');
+        const text = input.value.trim();
+        if (text) {
+            saveData(LS_KEYS.MEMOS, [text]);
+            input.value = text;
+            loadMemos();
+            alertMessage('備忘錄已儲存！', 'primary-bg');
+        } else {
+            saveData(LS_KEYS.MEMOS, []);
+            loadMemos();
+        }
+    }
+
+    function loadMemos() { /* ... */
+        const memos = loadData(LS_KEYS.MEMOS, []);
+        const container = document.getElementById('memo-list');
+        const input = document.getElementById('memo-input');
+
+        if (!container || !input) return;
+
+        const currentText = memos[0] || '';
+        input.value = currentText;
+
+        container.innerHTML = '';
+        if (currentText) {
+            const linkRegex = /(https?:\/\/\S+|www\.\S+)/gi;
+            const parts = currentText.split(linkRegex);
+
+            const displayDiv = document.createElement('div');
+            displayDiv.className = 'whitespace-pre-wrap text-gray-700 text-sm';
+
+            parts.forEach(part => {
+                if (part.match(linkRegex)) {
+                    const url = part.startsWith('http') ? part : 'https://' + part;
+                    const linkButton = document.createElement('a');
+                    linkButton.href = url;
+                    linkButton.target = '_blank';
+                    linkButton.className = 'inline-flex items-center text-xs primary-text bg-primary/10 px-2 py-1 rounded-full font-medium hover:bg-primary/20 transition duration-150 mt-1 mr-2';
+                    linkButton.innerHTML = `<i class="fa-solid fa-link mr-1"></i> 點擊連結`;
+                    displayDiv.appendChild(linkButton);
+                } else {
+                    displayDiv.appendChild(document.createTextNode(part));
+                }
+            });
+
+            container.appendChild(displayDiv);
+        } else {
+            container.innerHTML = '<p class="text-center text-gray-500 p-2">目前無備忘內容。</p>';
+        }
+    }
+
+
+    // ====================================================================
+    // 8. INFO (資訊) 渲染函數 (維持不變)
+    // ====================================================================
+
+    function renderInfo(container) {
+        const content = `
+            <div class="space-y-6">
+                <!-- 天氣與緊急連結 -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-blue-500">
+                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-cloud-sun-rain mr-2"></i> 當地天氣與實用連結</h2>
+                    <p class="text-sm text-gray-600 mb-3">查看最新的氣象預報，隨時準備好雨具。</p>
+                    <a href="https://www.jma.go.jp/jma/index.html" target="_blank" class="w-full inline-flex items-center justify-center secondary-bg text-white p-3 rounded-lg font-bold shadow-md hover:opacity-90 transition duration-150">
+                        <i class="fa-solid fa-temperature-low mr-2"></i> 日本氣象廳 (JMA)
+                    </a>
+                </div>
+
+                <!-- 緊急聯絡資訊 -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-red-500">
+                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-bell mr-2"></i> 緊急聯絡資訊 (日本 沖繩)</h2>
+                    <ul class="space-y-3">
+                        <li class="flex justify-between items-center text-gray-700">
+                            <span>警察 (Police)</span>
+                            <a href="tel:110" class="text-red-500 font-bold primary-bg/10 px-3 py-1 rounded-full hover:bg-red-500/20"><i class="fa-solid fa-phone mr-1"></i> 110</a>
+                        </li>
+                        <li class="flex justify-between items-center text-gray-700">
+                            <span>救護車/火警 (Ambulance/Fire)</span>
+                            <a href="tel:119" class="text-red-500 font-bold primary-bg/10 px-3 py-1 rounded-full hover:bg-red-500/20"><i class="fa-solid fa-phone mr-1"></i> 119</a>
+                        </li>
+                        <li class="flex justify-between items-center text-gray-700">
+                            <span>駐那霸辦事處 (外交部)</span>
+                            <a href="tel:+81988627008" class="text-blue-500 font-bold primary-bg/10 px-3 py-1 rounded-full hover:bg-blue-500/20"><i class="fa-solid fa-phone mr-1"></i> +81-98-862-7008</a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- 旅遊禁忌與注意事項 -->
+                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-amber-500">
+                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i> 旅遊禁忌與注意事項</h2>
+                    <ul class="list-disc list-inside text-sm text-gray-600 ml-2 space-y-2">
+                        <li><strong>公共場所：</strong>請勿在街道上邊走邊吃，或在禁菸區吸菸。</li>
+                        <li><strong>海邊防曬：</strong>沖繩紫外線強，即便不是夏季也需做好防曬措施。</li>
+                        <li><strong>大眾交通：</strong>那霸市區交通以單軌電車為主，前往北部如水族館需搭乘高速巴士。</li>
+                        <li><strong>出入境：</strong>嚴禁攜帶未經申報或超過限額的肉製品、水果、動物製品入境日本。</li>
+                        <li><strong>小費文化：</strong>日本沒有給小費的習慣。</li>
+                    </ul>
+                </div>
+            </div>
+        `;
+        container.innerHTML = content;
+    }
+
+
+    // ====================================================================
+    // 9. 通用工具與啟動 (Utils & Startup)
+    // ====================================================================
+
+    // 顯示 Loading 狀態
+    function showLoading(message = '載入中...') {
+        document.getElementById('loading-message').textContent = message;
+        document.getElementById('loading-modal').classList.remove('hidden');
+    }
+
+    // 隱藏 Loading 狀態
+    function hideLoading() {
+        document.getElementById('loading-modal').classList.add('hidden');
+    }
+
+    // 浮動訊息通知 (取代 alert/confirm)
+    function alertMessage(message, bgColorClass = 'primary-bg') {
+        const existingAlert = document.getElementById('floating-alert');
+        if (existingAlert) existingAlert.remove();
+
+        const alertDiv = document.createElement('div');
+        alertDiv.id = 'floating-alert';
+        alertDiv.className = `fixed top-4 left-1/2 transform -translate-x-1/2 ${bgColorClass} text-white px-4 py-2 rounded-full shadow-xl z-50 transition-opacity duration-300 opacity-0`;
+        alertDiv.textContent = message;
+
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+            alertDiv.classList.remove('opacity-0');
+            alertDiv.classList.add('opacity-100');
+        }, 50);
+
+        setTimeout(() => {
+            alertDiv.classList.remove('opacity-100');
+            alertDiv.classList.add('opacity-0');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 3000);
+    }
+
+    // 啟動後的初始化 (在 Firebase Auth 完成後執行)
+    window.postAuthInit = function() {
+        initializeStorage();
+
+        // 載入上次停留的 Tab
+        const initialTab = localStorage.getItem(LS_KEYS.CURRENT_TAB) || 'plan';
+        switchTab(initialTab);
+    };
+
+
+    // 應用程式啟動入口
+    window.onload = function() {
+        if (typeof window.initFirebaseAndAuth === 'function') {
+            // 嘗試初始化 Firebase 和認證
+            window.initFirebaseAndAuth();
+        } else {
+            console.error("Firebase Initialization function not found. Running local init only.");
+            // 如果環境中沒有 Firebase 模組，則執行本地初始化
+            window.isAuthReady = true;
+            window.postAuthInit();
+        }
+    };
+
+</script>
+
+<!-- 在 HTML 底部加入一個隱藏的訊息容器，用於取代原生的 alert/confirm -->
+<div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center">
+    <!-- 訊息內容會動態加入 -->
+</div>
+
+</body>
+</html>
