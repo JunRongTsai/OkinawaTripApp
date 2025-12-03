@@ -85,19 +85,21 @@
             }
             
             try {
-                // 使用匿名登入
-                await signInAnonymously(auth);
-                console.log("Firebase: Signed in anonymously.");
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                    console.log("Firebase: Signed in with custom token.");
+                } else {
+                    await signInAnonymously(auth);
+                    console.log("Firebase: Signed in anonymously.");
+                }
 
                 const userId = auth.currentUser?.uid || crypto.randomUUID();
                 window.userId = userId;
 
-                // 狀態變更時標記認證完成
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         console.log("Auth State Ready. Current User ID:", user.uid);
                         window.isAuthReady = true; 
-                        // 如果在 PLAN 頁面，認證完成後重新渲染
                         if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
                             switchTab('plan'); 
                         }
@@ -108,11 +110,9 @@
 
             } catch (error) {
                 console.error("Firebase Auth Error:", error);
-                // 捕獲錯誤並設置明確的錯誤碼
                 window.authError = { code: error.code, message: error.message };
                 
                 window.isAuthReady = true; 
-                // 即使失敗，也要重新渲染 PLAN 頁面以顯示錯誤提示
                 if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
                     switchTab('plan'); 
                 }
@@ -641,15 +641,23 @@
         showLoading('正在新增行程日...');
 
         try {
+            // [修正 1] 移除手動添加的括號
+            // date 是 YYYY-MM-DD 格式
+            const dateObj = new Date(date + 'T00:00:00'); // 確保日期正確解析
+            // '03/07 (六)' (使用 'zh-TW')
+            const formattedDate = dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', weekday: 'short' });
+            
             const newDay = {
                 day: day,
-                date: date,
+                // [修正]: 只使用 toLocaleDateString 提供的格式，並修復星期幾的括號
+                date: formattedDate,
                 order: parseInt(order),
                 events: []
             };
             // 使用 addDoc 讓 Firestore 自動生成 Doc ID
             await firebaseModules.addDoc(itineraryRef, newDay);
             alertMessage('行程日新增成功！', 'primary-bg');
+            switchTab('plan'); // 成功後刷新
         } catch (e) {
             console.error("Error adding document:", e);
             alertMessage('新增失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
@@ -666,12 +674,19 @@
 
         try {
             const dayRef = firebaseModules.doc(itineraryRef, docId);
+            
+            // [修正 1] 移除手動添加的括號
+            // date 是 YYYY-MM-DD 格式
+            const dateObj = new Date(date + 'T00:00:00'); // 確保日期正確解析
+            const formattedDate = dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', weekday: 'short' });
+            
             await firebaseModules.updateDoc(dayRef, {
                 day: day,
-                date: date,
+                date: formattedDate, // 使用修正後的格式
                 order: parseInt(order)
             });
             alertMessage('行程日更新成功！', 'primary-bg');
+            switchTab('plan'); // 成功後刷新
         } catch (e) {
             console.error("Error updating document:", e);
             alertMessage('更新失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
@@ -690,6 +705,7 @@
             const dayRef = firebaseModules.doc(itineraryRef, docId);
             await firebaseModules.deleteDoc(dayRef);
             alertMessage('行程日刪除成功！', 'primary-bg');
+            switchTab('plan'); // 成功後刷新
         } catch (e) {
             console.error("Error deleting document:", e);
             alertMessage('刪除失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
@@ -698,12 +714,24 @@
         }
     }
 
+    // [修正 2 & 3]: 確保 location 空字串會被轉為 null，避免 'undefined' 錯誤，並強制更新
     async function addEventToDay(docId, eventData) {
         const currentDay = cloudItineraryData.find(d => d.docId === docId);
         if (!currentDay) return;
 
         showLoading('正在新增活動...');
-        const updatedEvents = [...(currentDay.events || []), eventData];
+        
+        // 關鍵修正: 如果 location 是空字串，則設為 null
+        const newLocation = eventData.location && eventData.location.trim() !== '' ? eventData.location : null;
+
+        const newEvent = {
+            time: eventData.time,
+            name: eventData.name,
+            location: newLocation,
+            type: eventData.type 
+        };
+
+        const updatedEvents = [...(currentDay.events || []), newEvent];
         updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
 
         try {
@@ -711,6 +739,8 @@
                 events: updatedEvents
             });
             alertMessage('活動新增成功！', 'primary-bg');
+            // [關鍵修正] 新增後手動觸發畫面重新渲染
+            switchTab('plan'); 
         } catch (e) {
             console.error("Error adding event:", e);
             alertMessage('新增失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
@@ -719,13 +749,26 @@
         }
     }
 
+    // [修正 2 & 3]: 確保 location 空字串會被轉為 null，避免 'undefined' 錯誤，並強制更新
     async function updateEventInDay(docId, eventIndex, eventData) {
         const currentDay = cloudItineraryData.find(d => d.docId === docId);
         if (!currentDay) return;
 
         showLoading('正在更新活動...');
+        
+        // 關鍵修正: 如果 location 是空字串，則設為 null
+        const newLocation = eventData.location && eventData.location.trim() !== '' ? eventData.location : null;
+
         const updatedEvents = [...(currentDay.events || [])];
-        updatedEvents[eventIndex] = eventData;
+        
+        const updatedEvent = {
+            time: eventData.time,
+            name: eventData.name,
+            location: newLocation,
+            type: eventData.type 
+        };
+
+        updatedEvents[eventIndex] = updatedEvent;
         updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
 
         try {
@@ -733,6 +776,8 @@
                 events: updatedEvents
             });
             alertMessage('活動更新成功！', 'primary-bg');
+            // [關鍵修正] 更新後手動觸發畫面重新渲染
+            switchTab('plan'); 
         } catch (e) {
             console.error("Error updating event:", e);
             alertMessage('更新失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
@@ -753,6 +798,8 @@
                 events: updatedEvents
             });
             alertMessage('活動刪除成功！', 'primary-bg');
+            // [關鍵修正] 刪除後手動觸發畫面重新渲染
+            switchTab('plan'); 
         } catch (e) {
             console.error("Error deleting event:", e);
             alertMessage('刪除失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
@@ -771,6 +818,7 @@
 
         const modal = document.createElement('div');
         modal.id = id;
+        // [修正 2 & 3]: 確保每次 Modal 都能獨立存在並移除殘餘資料
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4 transition-opacity duration-300';
         modal.innerHTML = `
             <div class="bg-card w-full max-w-sm rounded-xl shadow-2xl p-6 transform scale-95 transition-transform duration-300">
@@ -796,24 +844,31 @@
         if (modal) {
             modal.classList.remove('opacity-100');
             modal.classList.add('opacity-0');
-            setTimeout(() => modal.remove(), 300);
+            setTimeout(() => modal.remove(), 300); // [修正 2 & 3]: 徹底移除 Modal
         }
     }
 
     function showAddDayModal() {
         const lastDayOrder = cloudItineraryData.length > 0 ? Math.max(...cloudItineraryData.map(d => d.order)) : 0;
         const nextOrder = lastDayOrder + 1;
+        
+        // 獲取當前日期並格式化為 YYYY-MM-DD
+        const today = new Date().toISOString().slice(0, 10);
+
         const body = `
             <div class="space-y-3">
                 <input type="text" id="modal-day-name" placeholder="例如: D6 (自由活動)" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <input type="text" id="modal-day-date" placeholder="例如: 03/12 (四)" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500 block mt-3">行程日期 (點擊右側日曆)</label>
+                <!-- [優化] 使用 type="date" 啟用日曆選擇器 -->
+                <input type="date" id="modal-day-date" value="${today}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500 block mt-3">排序 (數字越小越前面)</label>
                 <input type="number" id="modal-day-order" value="${nextOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
             </div>
         `;
 
         createModal('add-day-modal', '新增行程日', body, '確認新增', () => {
             const day = document.getElementById('modal-day-name').value;
-            const date = document.getElementById('modal-day-date').value;
+            const date = document.getElementById('modal-day-date').value; // YYYY-MM-DD 格式
             const order = document.getElementById('modal-day-order').value;
             if (day && date && order) {
                 addDayToFirestore(day, date, order);
@@ -824,13 +879,31 @@
         });
     }
 
+    // Helper: 將顯示格式 'MM/DD (星期)' 轉換為 YYYY-MM-DD (用於 <input type="date">)
+    function formatDateToISO(dateString) {
+        // 假設行程為 2026 年
+        const year = '2026'; 
+        // 從 'MM/DD (星期)' 中提取 MM/DD。注意：dayPlan.date 可能為 '03/07 (六)' 或 '03/07(六)'
+        const match = dateString.match(/(\d{2})\/(\d{2})/);
+        if (match) {
+            const month = match[1];
+            const day = match[2];
+            return `${year}-${month}-${day}`;
+        }
+        return '';
+    }
+
     function showEditDayModal(docId, currentDay, currentDate, currentOrder) {
+        // [優化] 將 Firestore 儲存的顯示格式轉換回 ISO 格式，以供 type="date" 使用
+        const isoDate = formatDateToISO(currentDate);
+
         const body = `
             <div class="space-y-3">
                 <label class="text-xs text-gray-500">行程日名稱 (例如: D1)</label>
                 <input type="text" id="modal-day-name" value="${currentDay}" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500">日期 (例如: 03/07 (六))</label>
-                <input type="text" id="modal-day-date" value="${currentDate}" class="w-full p-2 border rounded-md focus:ring primary-text">
+                <label class="text-xs text-gray-500">日期 (點擊右側日曆)</label>
+                <!-- [優化] 使用 type="date" 啟用日曆選擇器 -->
+                <input type="date" id="modal-day-date" value="${isoDate}" class="w-full p-2 border rounded-md focus:ring primary-text">
                 <label class="text-xs text-gray-500">排序 (數字越小越前面)</label>
                 <input type="number" id="modal-day-order" value="${currentOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
             </div>
@@ -838,7 +911,7 @@
 
         createModal('edit-day-modal', '編輯行程日資訊', body, '儲存變更', () => {
             const day = document.getElementById('modal-day-name').value;
-            const date = document.getElementById('modal-day-date').value;
+            const date = document.getElementById('modal-day-date').value; // YYYY-MM-DD 格式
             const order = document.getElementById('modal-day-order').value;
             if (day && date && order) {
                 updateDayInFirestore(docId, day, date, order);
@@ -880,7 +953,7 @@
             const type = document.getElementById('modal-event-type').value;
 
             if (time && name) {
-                const eventData = { time, name, location: location || undefined, type };
+                const eventData = { time, name, location, type };
                 addEventToDay(docId, eventData);
                 closeModal('add-event-modal');
             } else {
@@ -890,7 +963,12 @@
     }
 
     function showEditEventModal(docId, eventIndex) {
+        // [修正 2 & 3]: 確保獲取最新的數據
         const currentDay = cloudItineraryData.find(d => d.docId === docId);
+        if (!currentDay || !currentDay.events || !currentDay.events[eventIndex]) {
+            alertMessage('無法載入活動數據。請重試。', 'secondary-bg');
+            return;
+        }
         const currentEvent = currentDay.events[eventIndex];
 
         const body = `
@@ -900,6 +978,7 @@
                 <label class="text-xs text-gray-500">活動名稱</label>
                 <input type="text" id="modal-event-name" value="${currentEvent.name}" class="w-full p-2 border rounded-md focus:ring primary-text">
                 <label class="text-xs text-gray-500">地點名稱 (Google Maps)</label>
+                <!-- [修正]: 當 location 是 null 時，顯示空字串而不是 'null' -->
                 <input type="text" id="modal-event-location" value="${currentEvent.location || ''}" placeholder="可選" class="w-full p-2 border rounded-md focus:ring primary-text">
                 <label class="text-xs text-gray-500">活動類型</label>
                 <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
@@ -919,7 +998,7 @@
             const type = document.getElementById('modal-event-type').value;
 
             if (time && name) {
-                const eventData = { time, name, location: location || undefined, type };
+                const eventData = { time, name, location, type };
                 updateEventInDay(docId, eventIndex, eventData);
                 closeModal('edit-event-modal');
             } else {
@@ -971,7 +1050,6 @@
 
 
     function renderGuide(container) {
-        // [修正] 圖片已替換為 Emoji + Card，並新增營業時間和 Google Maps 連結。
         const topSpots = [
             { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00", type: 'sight' },
             { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)", type: 'sight' },
@@ -1038,6 +1116,7 @@
                                 <!-- 圖片已更換為 Emoji + Card -->
                                 <div class="w-24 h-20 bg-primary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex flex-col items-center justify-center">
                                     <span class="text-2xl">${getFoodEmoji(food.name)}</span>
+                                    <!-- [修正]: 確保顯示食物名稱，而不是 undefined -->
                                     <span class="text-xs font-medium mt-1 text-gray-700">${food.name.split(' ')[0]}</span>
                                 </div>
                                 <div class="flex-grow">
@@ -1268,10 +1347,7 @@
         if (expenses.length === 0) {
             listContainer.innerHTML = '<p class="text-center text-gray-500 p-4">目前沒有記帳記錄。</p>';
         } else {
-            listContainer.innerHTML = expenses.map(item => {
-                totalJPY += item.jpy;
-                const twd = item.jpy * rate;
-                return `
+            listContainer.innerHTML = expenses.map(item => `
                     <div class="flex items-center p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition duration-150">
                         ${item.image ? `
                             <img src="${item.image}" alt="收據" class="w-12 h-12 object-cover rounded-md mr-3 flex-shrink-0">
@@ -1284,14 +1360,16 @@
                         </div>
                         <div class="text-right ml-4 flex-shrink-0">
                             <p class="font-bold primary-text">${item.jpy.toFixed(0).toLocaleString('en-US')} JPY</p>
-                            <p class="text-xs text-gray-500">${twd.toFixed(0).toLocaleString('en-US')} TWD</p>
+                            <p class="text-xs text-gray-500">${(item.jpy * rate).toFixed(0).toLocaleString('en-US')} TWD</p>
                         </div>
                         <button onclick="deleteExpense('${item.id}')" class="ml-2 text-red-400 hover:text-red-600 transition duration-150 p-1">
                             <i class="fa-solid fa-trash-alt text-sm"></i>
                         </button>
                     </div>
-                `;
-            }).join('');
+                `
+            ).join('');
+            
+            totalJPY = expenses.reduce((sum, item) => sum + item.jpy, 0);
         }
 
         totalJPYDisplay.textContent = totalJPY.toFixed(0).toLocaleString('en-US') + ' JPY';
