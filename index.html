@@ -8,39 +8,27 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome CDN for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <!-- Google Fonts: Noto Sans TC for Zen/Minimalist look -->
+    <!-- Google Fonts: Noto Sans TC -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500;700&display=swap" rel="stylesheet">
 
-    <!-- Firebase SDK Modules for Cloud Features -->
-    <!-- 注意：此處必須使用 type="module" -->
+    <!-- Firebase SDK Modules -->
     <script type="module">
-        // 確保 Firebase API 模組化導入
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 設定全域變數以供其他 script 區塊存取
         window.firebaseModules = {
-            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            initializeApp, getAuth, signInAnonymously, onAuthStateChanged,
             getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy,
             setLogLevel
         };
         
-        // 全域狀態：Firebase 認證是否準備就緒
         window.isAuthReady = false; 
-        window.authError = null; // 儲存認證錯誤訊息
+        window.authError = null;
 
-        // =========================================================================
-        // !!! FIREBASE 雲端連線設定 (已更新為您提供的正確 Config) !!!
-        // =========================================================================
-        
-        // 1. 設定 App ID (用於 Firestore 路徑 artifacts/{appId}/public/data/itineraries)
         const APP_ID_FOR_NETLIFY = 'okinawa-group-trip-2026'; 
-
-        // 2. 填入您在 Firebase Console 獲取的 Web App 設定 (最新版)
         const FIREBASE_CONFIG_FOR_NETLIFY = {
-             // 此處為您提供的最新、最正確的 API Key
              apiKey: "AIzaSyDc7dkeG9RJcmyuNv2ZYDZEtkTUwNWAYek",
              authDomain: "travelapp-b382d.firebaseapp.com",
              projectId: "travelapp-b382d",
@@ -50,1635 +38,495 @@
              measurementId: "G-T0YDHHG7DN"
         };
         
-        // 在 Netlify 環境中，直接使用硬編碼的配置
         const appId = APP_ID_FOR_NETLIFY; 
         const firebaseConfig = FIREBASE_CONFIG_FOR_NETLIFY;
-        const initialAuthToken = null; 
         
-        // 檢查設定是否為預設的 Placeholder
         let firebaseReady = false;
-        if (firebaseConfig.apiKey === "YOUR_API_KEY_HERE" || !firebaseConfig.apiKey) {
-            console.error("FIREBASE CONFIG ERROR: Missing API key.");
-            // 設定 Dummy Objects 避免後續 function 拋出 undefined 錯誤
-            window.db = {}; 
-            window.auth = { currentUser: { uid: 'placeholder-uid' } };
-            window.appId = appId;
-        } else {
-            // Initialization proceeds only if config seems valid
+        if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY_HERE") {
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
             const auth = getAuth(app);
-            setLogLevel('debug'); 
             window.db = db;
             window.auth = auth;
             window.appId = appId;
             firebaseReady = true;
         }
-        // =========================================================================
 
-
-        // 認證邏輯
         async function initFirebaseAndAuth() {
-            if (!firebaseReady) {
-                console.log("Skipping Firebase Auth due to missing configuration.");
-                return;
-            }
-            
+            if (!firebaseReady) return;
             try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                    console.log("Firebase: Signed in with custom token.");
-                } else {
-                    await signInAnonymously(auth);
-                    console.log("Firebase: Signed in anonymously.");
-                }
-
-                const userId = auth.currentUser?.uid || crypto.randomUUID();
-                window.userId = userId;
-
+                await signInAnonymously(auth);
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        console.log("Auth State Ready. Current User ID:", user.uid);
                         window.isAuthReady = true; 
-                        if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
-                            switchTab('plan'); 
-                        }
-                    } else {
-                        console.log("Auth State changed: No user signed in.");
+                        window.userId = user.uid;
+                        if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') switchTab('plan'); 
                     }
                 });
-
             } catch (error) {
-                console.error("Firebase Auth Error:", error);
-                window.authError = { code: error.code, message: error.message };
-                
+                window.authError = error;
                 window.isAuthReady = true; 
-                if (localStorage.getItem('zenTravelApp_currentTab') === 'plan') {
-                    switchTab('plan'); 
-                }
             }
         }
-
         window.initFirebaseAndAuth = initFirebaseAndAuth;
     </script>
 
-
     <style>
-        :root {
-            /* 主色: 柔和的紅棕色/鮭魚粉 (Salmon/Red-Brown) */
-            --color-primary: #C89088;
-            /* 次色: 柔和的墨綠色 (Muted Green) */
-            --color-secondary: #8D9B8B;
-            /* 背景色: 奶油白/米白 (Creamy White) */
-            --color-background: #F7F3E8;
-            /* 卡片背景色 */
-            --color-card: #FFFFFF;
-        }
-
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            background-color: var(--color-background);
-            padding-bottom: 72px; /* 底部導航列高度 */
-        }
-
-        /* 自定義 Tailwind 設定 */
+        :root { --color-primary: #C89088; --color-secondary: #8D9B8B; --color-background: #F7F3E8; --color-card: #FFFFFF; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: var(--color-background); padding-bottom: 72px; }
         .primary-bg { background-color: var(--color-primary); }
         .primary-text { color: var(--color-primary); }
         .secondary-bg { background-color: var(--color-secondary); }
-        .secondary-text { color: var(--color-secondary); }
         .bg-card { background-color: var(--color-card); }
-
-        .nav-icon {
-            transition: color 0.2s;
-        }
-
-        /* 行程時間軸樣式 */
-        .timeline-item {
-            position: relative;
-            padding-left: 20px;
-            border-left: 2px solid #D1D5DB; /* 灰色線條 */
-        }
-
-        .timeline-item::before {
-            content: '';
-            position: absolute;
-            left: -8px;
-            top: 0;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background-color: var(--color-secondary);
-            border: 3px solid var(--color-background);
-        }
-
-        .timeline-highlight::before {
-             background-color: var(--color-primary) !important;
-             border: 3px solid var(--color-background);
-        }
-
-        /* 隱藏原生檔案輸入框 */
-        .file-input-hidden {
-            width: 0.1px;
-            height: 0.1px;
-            opacity: 0;
-            overflow: hidden;
-            position: absolute;
-            z-index: -1;
-        }
-
-        /* 滾動條美化 (Webkit/Chrome) */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background-color: var(--color-secondary);
-            border-radius: 3px;
-        }
-        ::-webkit-scrollbar-track {
-            background-color: var(--color-background);
-        }
-        /* 地圖 Modal 樣式 */
-        .modal-iframe-container {
-            position: relative;
-            width: 100%;
-            padding-top: 75%; /* 4:3 Aspect Ratio */
-        }
-
-        .modal-iframe-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 0.5rem;
-        }
-
+        .timeline-item { position: relative; padding-left: 20px; border-left: 2px solid #D1D5DB; }
+        .timeline-item::before { content: ''; position: absolute; left: -8px; top: 0; width: 14px; height: 14px; border-radius: 50%; background-color: var(--color-secondary); border: 2px solid var(--color-background); }
+        .timeline-highlight::before { background-color: var(--color-primary) !important; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background-color: var(--color-secondary); border-radius: 3px; }
     </style>
 </head>
-<body class="min-h-screen">
+<body>
 
-    <!-- Header 頂部標題 (Mobile-First) -->
-    <header class="fixed top-0 left-0 right-0 bg-card shadow-lg p-4 z-10">
+    <header class="fixed top-0 left-0 right-0 bg-card shadow p-4 z-30">
         <h1 id="app-title" class="text-xl font-bold primary-text text-center">旅程規劃 (PLAN)</h1>
     </header>
 
-    <!-- 主內容區域 -->
     <main id="app-content" class="pt-[64px] pb-4 px-4"></main>
-    
-    <!-- Loading Modal (用於 API 請求或耗時操作) -->
-    <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="bg-card p-6 rounded-xl shadow-2xl flex items-center primary-text">
-            <i class="fas fa-spinner fa-spin mr-3"></i>
-            <span id="loading-message">載入中...</span>
-        </div>
-    </div>
-    
-    <!-- 地圖 Modal 結構 (已簡化為彈窗提示) -->
-    <div id="map-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 transition-opacity duration-300 opacity-0 hidden">
-        <div class="bg-card w-full max-w-sm rounded-xl shadow-2xl p-6 transform scale-95 transition-transform duration-300">
-            <h3 id="map-modal-title" class="text-xl font-bold primary-text mb-4 border-b pb-2">地點地圖</h3>
-            <p class="text-gray-700 mb-6">即將開啟 <span id="map-location-text" class="font-bold secondary-text"></span> 的地圖應用程式。</p>
-            <div class="flex justify-end space-x-3 pt-4 border-t">
-                <a id="map-external-link" target="_blank" class="secondary-bg text-white px-4 py-2 rounded-lg font-bold hover:opacity-90 flex items-center">
-                    <i class="fa-solid fa-external-link-alt mr-2"></i> 前往地圖 App
-                </a>
-                <button onclick="closeModal('map-modal')" class="text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">取消</button>
-            </div>
-        </div>
-    </div>
 
-
-    <!-- 底部導航列 (Fixed Bottom Navigation) -->
-    <nav class="fixed bottom-0 left-0 right-0 h-16 primary-bg shadow-2xl z-20 flex justify-around items-center">
-        <button onclick="switchTab('plan')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
-            <i class="fa-solid fa-calendar-alt text-xl"></i>
-            <span class="text-xs mt-1">行程表</span>
+    <!-- Navigation -->
+    <nav class="fixed bottom-0 left-0 right-0 h-16 primary-bg shadow-2xl z-30 flex justify-around items-center">
+        <button onclick="switchTab('plan')" class="nav-icon text-white flex flex-col items-center p-2">
+            <i class="fa-solid fa-calendar-alt text-xl"></i><span class="text-[10px]">行程表</span>
         </button>
-        <button onclick="switchTab('guide')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
-            <i class="fa-solid fa-compass text-xl"></i>
-            <span class="text-xs mt-1">導覽</span>
+        <button onclick="switchTab('guide')" class="nav-icon text-white/60 flex flex-col items-center p-2">
+            <i class="fa-solid fa-compass text-xl"></i><span class="text-[10px]">導覽</span>
         </button>
-        <button onclick="switchTab('wallet')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
-            <i class="fa-solid fa-wallet text-xl"></i>
-            <span class="text-xs mt-1">記帳</span>
+        <button onclick="switchTab('wallet')" class="nav-icon text-white/60 flex flex-col items-center p-2">
+            <i class="fa-solid fa-wallet text-xl"></i><span class="text-[10px]">記帳</span>
         </button>
-        <button onclick="switchTab('lists')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
-            <i class="fa-solid fa-list-check text-xl"></i>
-            <span class="text-xs mt-1">清單</span>
+        <button onclick="switchTab('lists')" class="nav-icon text-white/60 flex flex-col items-center p-2">
+            <i class="fa-solid fa-list-check text-xl"></i><span class="text-[10px]">清單</span>
         </button>
-        <button onclick="switchTab('info')" class="nav-icon text-card focus:outline-none flex flex-col items-center justify-center p-2">
-            <i class="fa-solid fa-circle-info text-xl"></i>
-            <span class="text-xs mt-1">資訊</span>
+        <button onclick="switchTab('info')" class="nav-icon text-white/60 flex flex-col items-center p-2">
+            <i class="fa-solid fa-circle-info text-xl"></i><span class="text-[10px]">資訊</span>
         </button>
     </nav>
 
+    <!-- Map Modal -->
+    <div id="map-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-card w-full max-w-xs rounded-xl p-6 shadow-2xl">
+            <h3 id="map-modal-title" class="font-bold primary-text mb-4 border-b pb-2">地點地圖</h3>
+            <p id="map-modal-desc" class="text-sm text-gray-600 mb-6">即將開啟地圖導航...</p>
+            <div class="flex justify-end space-x-2">
+                <button onclick="closeMapModal()" class="text-gray-400 px-3">取消</button>
+                <a id="map-external-link" target="_blank" class="primary-bg text-white px-4 py-2 rounded-lg font-bold">前往</a>
+            </div>
+        </div>
+    </div>
+
 <script>
     // ====================================================================
-    // 1. 全域設定與資料模型 (Global Setup and Data Model)
+    // 1. Data & Global Config (包含詳細航班資訊)
     // ====================================================================
+    const TWD_RATE_KEY = 'zenTravelApp_TWD_RATE_V2';
+    const LS_KEYS = { WALLET: 'zenTravelApp_wallet', CHECKLIST: 'zenTravelApp_checklist', MEMOS: 'zenTravelApp_memos', CURRENT_TAB: 'zenTravelApp_currentTab' };
 
-    // 匯率設定 (日幣 JPY 換算為 台幣 TWD)
-    const TWD_RATE_KEY = 'zenTravelApp_TWD_RATE';
-    const initialRate = 0.215; // 初始匯率： 1 JPY = 0.215 TWD
-
-    // LocalStorage Keys (記帳和清單仍使用 LocalStorage)
-    const LS_KEYS = {
-        WALLET: 'zenTravelApp_wallet',
-        CHECKLIST: 'zenTravelApp_checklist',
-        MEMOS: 'zenTravelApp_memos',
-        CURRENT_TAB: 'zenTravelApp_currentTab'
-    };
-
-    // 雲端行程資料 (將從 Firestore 讀取)
     let cloudItineraryData = [];
-    let unsubscribeItinerary = null; // 用於儲存 Firestore 監聽器
-    window.authError = null; // New: 儲存認證錯誤訊息
+    let unsubscribeItinerary = null;
 
-    // 旅遊資訊 (用於初始化和靜態頁面)
     const STATIC_TRAVEL_DATA = {
-        // 航班資訊
-        flight: {
-            outbound: "IT288 (KHH 09:45 → OKA 12:30)", // 臺灣虎航 KHH -> OKA
-            return: "CI133 (OKA 19:30 → KHH 20:25)" // 中華航空 OKA -> KHH
+        flight: { 
+            outbound: {
+                no: "IT288",
+                route: "高雄 (KHH) → 沖繩 (OKA)",
+                time: "09:45 → 12:30",
+                duration: "1小時45分"
+            },
+            return: {
+                no: "IT289",
+                route: "沖繩 (OKA) → 高雄 (KHH)",
+                time: "13:30 → 14:25",
+                duration: "1小時55分"
+            }
         },
-        // 住宿資訊
-        accommodation: {
-            name: "那霸縣廳前阿爾蒙特 (Almont Hotel Naha-Kenchomae)",
-            address: "沖繩縣那霸市久茂地 1-3-5 (近國際通)"
-        },
-        // 必備清單 (已移除自駕相關)
-        prepList: [
-            "護照、簽證", "日幣現金、信用卡", "網卡/eSIM/Wifi機", "充電器、轉接頭", "雨具、外套",
-            "個人藥品", "換洗衣物", "旅遊保險單", "電子機票/訂房確認單"
-        ]
+        hotel: "那霸縣廳前阿爾蒙特 (Almont Hotel)",
+        hotelAddr: "沖繩縣那霸市久茂地 1-3-5",
+        prepList: ["護照、簽證", "日幣現金、信用卡", "網卡/eSIM", "充電器", "雨具", "個人藥品", "換洗衣物", "旅遊保險單"]
     };
 
-    // 預設行程 (那霸為主, 步行/大眾交通) - 僅用於 Firestore 首次載入空值時的初始化參考
     const DEFAULT_ITINERARY = [
-        { id: 'D1', day: 'D1 (抵達/市區)', date: '03/07 (六)', order: 1, events: [
-            { time: '12:30', name: '抵達沖繩那霸機場 (OKA)', type: 'info' },
-            { time: '14:30', name: 'Check-in 飯店 (那霸縣廳前阿爾蒙特)', type: 'info', location: '沖繩縣那霸市久茂地 1-3-5' },
-            { time: '17:00', name: '國際通散策與購物', type: 'activity', location: '國際通' },
-            { time: '19:30', name: '晚餐：琉球特色料理 (重要集合時間)', type: 'highlight', location: '國際通' }
-        ]},
-        { id: 'D2', day: 'D2 (海洋/水族館)', date: '03/08 (日)', order: 2, events: [
-            { time: '09:00', name: '搭乘高速巴士前往海洋博公園 (水族館)', type: 'highlight', location: '名護' },
-            { time: '11:00', name: '沖繩美麗海水族館 (Churaumi Aquarium)', type: 'sight', location: '海洋博公園' },
-            { time: '16:00', name: '觀賞海豚表演 (Ocean Expo Park)', type: 'sight' },
-            { time: '19:30', name: '返回那霸市區', type: 'info' }
-        ]},
-        { id: 'D3', day: 'D3 (文化/購物)', date: '03/09 (一)', order: 3, events: [
-            { time: '10:00', name: '波上宮 (海邊神社)', type: 'sight', location: '波上宮' },
-            { time: '12:00', name: '午餐：琉球茶房 (查看食記)', type: 'food', location: '琉球茶房' },
-            { time: '15:00', name: '搭乘單軌電車至小祿站', type: 'info' },
-            { time: '15:30', name: 'AEON Mall / Ashibinaa Outlet 購物', type: 'activity', location: 'Ashibinaa Outlet' }
-        ]},
-        { id: 'D4', day: 'D4 (市區/慢活)', date: '03/10 (二)', order: 4, events: [
-            { time: '10:30', name: '首里城公園 (搭乘單軌電車)', type: 'sight', location: '首里城' },
-            { time: '13:00', name: '首里金城町石疊道散步', type: 'sight' },
-            { time: '16:00', name: '那霸國際通周邊咖啡廳休息', type: 'activity' },
-            { time: '19:00', name: '晚餐：國際通周邊美食探索 (TOP10)', type: 'food', location: '國際通' }
-        ]},
+        { id: 'D1', day: 'D1 (抵達)', date: '03/07 (六)', order: 1, events: [{ time: '12:30', name: '抵達 OKA 機場', type: 'info' }, { time: '15:00', name: '飯店 Check-in', type: 'info', location: 'Almont Hotel' }] },
         { id: 'D5', day: 'D5 (返程)', date: '03/11 (三)', order: 5, events: [
-            { time: '10:00', name: '飯店 Check-out / 寄放行李', type: 'info' },
-            { time: '12:00', name: '那霸市區午餐與最終採買', type: 'activity', location: '國際通' },
-            { time: '16:00', name: '取行李，前往那霸機場 (OKA)', type: 'highlight' },
-            { time: '19:30', name: 'CI133 飛機起飛 (OKA → KHH)', type: 'info' }
+            { time: '09:00', name: '飯店退房 / 寄放行李', type: 'info' },
+            { time: '10:30', name: '出發前往機場', type: 'highlight' },
+            { time: '11:30', name: '抵達機場報到 (IT289)', type: 'info' },
+            { time: '13:30', name: 'IT289 起飛', type: 'info' }
         ]}
     ];
 
-    // ====================================================================
-    // 2. LocalStorage 存取與初始化 (Storage & Init)
-    // ====================================================================
-
-    // 載入資料 (通用 - 僅用於 LocalStorage)
-    function loadData(key, defaultVal) {
-        const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : defaultVal;
-    }
-
-    // 儲存資料 (通用 - 僅用於 LocalStorage)
-    function saveData(key, data) {
-        localStorage.setItem(key, JSON.stringify(data));
-    }
-
-    // 初始化 LocalStorage 資料
     function initializeStorage() {
         if (!localStorage.getItem(LS_KEYS.CHECKLIST)) {
-            const initialChecklist = STATIC_TRAVEL_DATA.prepList.map(item => ({
-                id: crypto.randomUUID(),
-                text: item,
-                checked: false
-            }));
-            saveData(LS_KEYS.CHECKLIST, initialChecklist);
+            saveData(LS_KEYS.CHECKLIST, STATIC_TRAVEL_DATA.prepList.map(item => ({ id: crypto.randomUUID(), text: item, checked: false })));
         }
+        if (!localStorage.getItem(LS_KEYS.WALLET)) saveData(LS_KEYS.WALLET, []);
+        if (!localStorage.getItem(LS_KEYS.MEMOS)) localStorage.setItem(LS_KEYS.MEMOS, '');
+        if (!localStorage.getItem(TWD_RATE_KEY)) localStorage.setItem(TWD_RATE_KEY, "0.215");
+    }
 
-        if (!localStorage.getItem(LS_KEYS.WALLET)) {
-            saveData(LS_KEYS.WALLET, []);
-        }
+    function loadData(k, d) { try { return JSON.parse(localStorage.getItem(k)) || d; } catch(e) { return d; } }
+    function saveData(k, d) { localStorage.setItem(k, JSON.stringify(d)); }
 
-        if (!localStorage.getItem(LS_KEYS.MEMOS)) {
-            saveData(LS_KEYS.MEMOS, []);
-        }
-
-        if (!localStorage.getItem(TWD_RATE_KEY)) {
-            localStorage.setItem(TWD_RATE_KEY, initialRate.toString());
+    // ====================================================================
+    // 2. Real-time Exchange Rate (API Fetching)
+    // ====================================================================
+    async function updateRealtimeRate() {
+        try {
+            const res = await fetch('https://api.exchangerate-api.com/v4/latest/JPY');
+            const data = await res.json();
+            const rate = data.rates.TWD;
+            localStorage.setItem(TWD_RATE_KEY, rate);
+            return rate;
+        } catch (e) {
+            console.error("Fetch rate failed", e);
+            return parseFloat(localStorage.getItem(TWD_RATE_KEY)) || 0.215;
         }
     }
 
     // ====================================================================
-    // 3. 畫面切換與導航 (Tab Switching)
+    // 3. Tab Rendering Logic
     // ====================================================================
-
     const TABS = {
-        plan: { title: '旅程規劃 (PLAN - 雲端協作)', renderer: renderPlan },
-        guide: { title: '深度導覽 (GUIDE - 沖繩TOP10)', renderer: renderGuide },
-        wallet: { title: '記帳與匯率 (WALLET - 個人紀錄)', renderer: renderWallet },
-        lists: { title: '清單與備忘 (LISTS - 個人紀錄)', renderer: renderLists },
+        plan: { title: '旅程規劃 (PLAN)', renderer: renderPlan },
+        guide: { title: '深度導覽 (GUIDE)', renderer: renderGuide },
+        wallet: { title: '記帳與匯率 (WALLET)', renderer: renderWallet },
+        lists: { title: '清單與備忘 (LISTS)', renderer: renderLists },
         info: { title: '實用資訊 (INFO)', renderer: renderInfo }
     };
 
-    function switchTab(tabName) {
-        const contentArea = document.getElementById('app-content');
-        const titleArea = document.getElementById('app-title');
-        const navButtons = document.querySelectorAll('.nav-icon');
-
-        if (!TABS[tabName]) return;
-
-        // 停止舊的 Firestore 監聽器
-        if (unsubscribeItinerary) {
-            unsubscribeItinerary();
-            unsubscribeItinerary = null;
-            console.log("Firestore: Unsubscribed from previous Plan listener.");
-        }
-
-        // 更新導航列樣式
-        navButtons.forEach(btn => {
-            const isActive = btn.getAttribute('onclick').includes(`'${tabName}'`);
-            btn.classList.toggle('primary-bg', isActive);
-            btn.classList.toggle('text-card', isActive);
-            btn.classList.toggle('text-white', !isActive);
-            btn.classList.toggle('bg-white/10', !isActive);
+    function switchTab(t) {
+        const area = document.getElementById('app-content');
+        const title = document.getElementById('app-title');
+        const navs = document.querySelectorAll('.nav-icon');
+        if (!TABS[t]) return;
+        if (unsubscribeItinerary) { unsubscribeItinerary(); unsubscribeItinerary = null; }
+        
+        navs.forEach(n => {
+            const isActive = n.getAttribute('onclick').includes(`'${t}'`);
+            n.classList.toggle('text-white', isActive);
+            n.classList.toggle('text-white/60', !isActive);
         });
 
-        // 更新標題
-        titleArea.textContent = TABS[tabName].title;
-        // 清空並渲染內容
-        contentArea.innerHTML = '';
-        TABS[tabName].renderer(contentArea);
-
-        // 儲存當前 Tab
-        localStorage.setItem(LS_KEYS.CURRENT_TAB, tabName);
+        title.textContent = TABS[t].title;
+        area.innerHTML = '';
+        TABS[t].renderer(area);
+        localStorage.setItem(LS_KEYS.CURRENT_TAB, t);
     }
 
     // ====================================================================
-    // 4. PLAN (行程表 - FIREBASE 雲端協作) 渲染與邏輯
+    // 4. PLAN (Firestore CRUD)
     // ====================================================================
-
-    function getItineraryCollectionRef() {
-        if (typeof db === 'undefined' || typeof appId === 'undefined' || !window.db.app) {
-            console.error("Firestore or App ID not initialized.");
-            return null;
-        }
-        // 公共資料路徑: /artifacts/{appId}/public/data/itineraries
-        return firebaseModules.collection(db, `artifacts/${appId}/public/data/itineraries`);
-    }
-
-    // 實時獲取行程數據
-    function fetchItineraryRealtime(container) {
-        // 檢查是否因配置錯誤而跳過初始化 (Case 1: Placeholder key)
-        if (typeof window.db === 'object' && !window.db.app) {
-             container.innerHTML = `
-                <div class="text-center p-8 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-xl shadow-md">
-                    <i class="fa-solid fa-triangle-exclamation text-2xl mb-3"></i>
-                    <p class="font-bold mb-2">雲端連線失敗：請設定 Firebase</p>
-                    <p class="text-sm">請編輯此 HTML 檔案，並在開頭的 &lt;script type="module"&gt; 區塊中，將 **YOUR_API_KEY_HERE** 替換為您自己的 Firebase 專案設定。</p>
-                </div>
-             `;
-             return;
-        }
-
-        // 檢查是否因為認證失敗 (Case 2: Invalid API key/Auth disabled)
-        if (window.authError) {
-             const errorHtml = `
-                <div class="text-center p-8 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-xl shadow-md">
-                    <i class="fa-solid fa-link-slash text-2xl mb-3"></i>
-                    <p class="font-bold mb-2">雲端連線失敗：認證錯誤</p>
-                    <p class="text-sm">Firebase 回傳錯誤：<code>${window.authError.code || '連線異常'}</code></p>
-                    <p class="text-xs mt-2 font-bold">請檢查您的 Firebase Console：</p>
-                    <ul class="text-xs list-disc list-inside mt-1 mx-auto max-w-xs text-left">
-                        <li>**Authentication**：確保已啟用 **匿名登入 (Anonymous)** 方法。</li>
-                        <li>**Config 資訊**：再次檢查 HTML 中的 **apiKey** 和 **projectId** 是否完整貼上。</li>
-                        <li>**網域授權**：在 Auth 設定中，將您的 Netlify 網址加入 **授權網域 (Authorized Domains)**。</li>
-                        <li>**Firestore 規則**：確保公共路徑 (\`/artifacts/{appId}/public/...\`) 允許讀寫。</li>
-                    </ul>
-                </div>
-             `;
-             container.innerHTML = errorHtml;
-             return;
-        }
-
-        const itineraryRef = getItineraryCollectionRef();
-        if (!itineraryRef) {
-             container.innerHTML = '<p class="text-center text-red-500 p-8">雲端資料庫未連線或驗證失敗，無法載入行程。</p>';
-             return;
-        }
-
-        // 設置 Loading 狀態
-        container.innerHTML = `
-            <div class="text-center py-12">
-                <i class="fas fa-spinner fa-spin text-3xl primary-text"></i>
-                <p class="mt-4 text-gray-600">正在同步雲端行程數據...</p>
-            </div>
-        `;
-
-
-        // 設置 Firestore 實時監聽器
-        const q = firebaseModules.query(itineraryRef, firebaseModules.orderBy('order', 'asc'));
-
-        unsubscribeItinerary = firebaseModules.onSnapshot(q, (snapshot) => {
-            console.log("Firestore: Itinerary data received.");
-            cloudItineraryData = snapshot.docs.map(doc => ({
-                ...doc.data(),
-                docId: doc.id
-            }));
-
-            // 如果雲端數據為空，則使用預設行程初始化雲端
-            if (cloudItineraryData.length === 0) {
-                console.log("Firestore: Cloud is empty, initializing with default itinerary.");
-                DEFAULT_ITINERARY.forEach(dayPlan => {
-                     // 使用 setDoc 確保 Doc ID 為 D1, D2...
-                    firebaseModules.setDoc(firebaseModules.doc(itineraryRef, dayPlan.id), dayPlan)
-                    .catch(e => console.error("Error setting default itinerary:", e));
-                });
-                return; // 等待下一個 Snapshot 觸發渲染
-            }
-
-            renderItineraryUI(container, cloudItineraryData);
-
-        }, (error) => {
-            console.error("Firestore Realtime Listener Error:", error);
-            container.innerHTML = `<p class="text-center text-red-500 p-8">雲端同步錯誤: ${error.message}</p>`;
-        });
-    }
+    function getColRef() { return firebaseModules.collection(db, 'artifacts', appId, 'public', 'data', 'itineraries'); }
 
     function renderPlan(container) {
-        // 如果認證流程尚未完成，則顯示等待訊息
-        if (!window.isAuthReady) {
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <i class="fas fa-spinner fa-spin text-3xl secondary-text"></i>
-                    <p class="mt-4 text-gray-600">正在驗證雲端身份，請稍候...</p>
-                </div>
-            `;
-            // 在等待時，嘗試在背景執行認證，以便完成後可以自動載入
-            if (typeof window.initFirebaseAndAuth === 'function') {
-                window.initFirebaseAndAuth();
-            }
-            return;
-        }
-
-        // 渲染頂部資訊
-        const infoHtml = `
-            <div class="mb-6 space-y-4">
-                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-blue-400">
-                    <h3 class="font-bold text-gray-700 mb-1"><i class="fa-solid fa-plane-up mr-2"></i>航班資訊 (高雄 KHH ⇌ 沖繩 OKA)</h3>
-                    <p class="text-sm text-gray-600">去程: ${STATIC_TRAVEL_DATA.flight.outbound}</p>
-                    <p class="text-sm text-gray-600">回程: ${STATIC_TRAVEL_DATA.flight.return}</p>
-                </div>
-                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-yellow-400">
-                    <h3 class="font-bold text-gray-700 mb-1"><i class="fa-solid fa-hotel mr-2"></i>住宿資訊 (4晚)</h3>
-                    <p class="text-sm text-gray-600">${STATIC_TRAVEL_DATA.accommodation.name}</p>
-                    <p class="text-xs text-gray-500 mt-1">${STATIC_TRAVEL_DATA.accommodation.address}</p>
-                </div>
-                <div class="text-center pt-2">
-                    <button onclick="showAddDayModal()" class="primary-bg text-white px-4 py-2 rounded-full font-bold shadow-md hover:opacity-90">
-                        <i class="fa-solid fa-plus mr-1"></i> 新增行程日
-                    </button>
-                </div>
-            </div>
-            <div id="itinerary-list"></div>
-        `;
-        container.innerHTML = infoHtml;
-        fetchItineraryRealtime(document.getElementById('itinerary-list'));
-    }
-
-    // 渲染行程列表 (由 onSnapshot 觸發)
-    function renderItineraryUI(container, data) {
-        const listHtml = data.map(dayPlan => `
-            <div class="mb-8 p-4 bg-card rounded-xl shadow-lg border border-gray-100 relative" data-doc-id="${dayPlan.docId}">
-                 <div class="absolute top-3 right-3 flex space-x-2">
-                    <button onclick="showEditDayModal('${dayPlan.docId}', '${dayPlan.day}', '${dayPlan.date}', ${dayPlan.order})" class="text-gray-500 hover:text-blue-600"><i class="fa-solid fa-edit text-sm"></i></button>
-                    <button onclick="confirmDeleteDay('${dayPlan.docId}', '${dayPlan.day}')" class="text-gray-500 hover:text-red-600"><i class="fa-solid fa-trash-alt text-sm"></i></button>
-                </div>
-                <!-- 日期標題 -->
-                <div class="flex items-center mb-4 pb-2 border-b border-gray-200">
-                    <span class="secondary-bg text-white font-bold text-sm px-3 py-1 rounded-full mr-3">${dayPlan.day}</span>
-                    <h2 class="text-lg font-medium secondary-text">${dayPlan.date}</h2>
-                </div>
-
-                <!-- 行程時間軸 -->
-                <div class="space-y-6">
-                    ${(dayPlan.events || []).map((event, index) => `
-                        <div class="timeline-item ${event.type === 'highlight' ? 'timeline-highlight' : ''} group">
-                            <div class="ml-4 flex justify-between items-start">
-                                <div class="flex-grow">
-                                    <p class="text-xs text-gray-500 font-mono">${event.time}</p>
-                                    <p class="text-base font-semibold text-gray-800 flex items-center">
-                                        <i class="${getIconForEventType(event.type)} mr-2 text-sm"></i>
-                                        ${event.name}
-                                    </p>
-                                    ${event.location ? `
-                                        <div class="mt-2 space-x-2">
-                                            <!-- 點擊後開啟 Modal 提示，導向地圖 App -->
-                                            <button onclick="showMapModal('${event.location}', '行程地點: ${event.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
-                                                <i class="fa-solid fa-map-marker-alt mr-1"></i> Google Maps (導航)
-                                            </button>
-                                            ${event.type === 'food' ? `
-                                                <a href="https://www.google.com/search?q=${encodeURIComponent(event.name + ' 食記 推薦')}" target="_blank" class="text-xs inline-flex items-center px-2 py-1 secondary-bg text-white rounded-full transition duration-300 hover:opacity-80">
-                                                    <i class="fa-solid fa-book-open mr-1"></i> 查看食記
-                                                </a>
-                                            ` : ''}
-                                        </div>
-                                    ` : ''}
-                                </div>
-                                <div class="flex-shrink-0 ml-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition duration-300">
-                                    <button onclick="showEditEventModal('${dayPlan.docId}', ${index})" class="text-gray-500 hover:text-blue-600 p-1"><i class="fa-solid fa-pencil-alt text-xs"></i></button>
-                                    <button onclick="confirmDeleteEvent('${dayPlan.docId}', ${index}, '${event.name}')" class="text-gray-500 hover:text-red-600 p-1"><i class="fa-solid fa-times text-xs"></i></button>
-                                </div>
-                            </div>
+        if (!window.isAuthReady) { container.innerHTML = '<div class="py-20 text-center"><i class="fas fa-spinner fa-spin text-3xl"></i></div>'; return; }
+        
+        const f = STATIC_TRAVEL_DATA.flight;
+        container.innerHTML = `
+            <div class="mb-4 space-y-3">
+                <!-- 詳細航班資訊卡片 -->
+                <div class="bg-white p-4 rounded-xl shadow-md border-l-4 border-blue-400 text-xs">
+                    <div class="flex justify-between items-end border-b pb-2 mb-2">
+                        <h4 class="font-bold primary-text text-sm"><i class="fa-solid fa-plane mr-2"></i>航班詳細資訊</h4>
+                        <span class="text-gray-300">Tigerair Taiwan</span>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="font-bold text-gray-700">${f.outbound.no} | ${f.outbound.route}</p>
+                            <p class="text-gray-500">${f.outbound.time} (${f.outbound.duration})</p>
                         </div>
-                    `).join('')}
-                    <div class="text-center pt-4">
-                        <button onclick="showAddEventModal('${dayPlan.docId}')" class="text-sm secondary-text hover:underline">
-                            <i class="fa-solid fa-plus-circle mr-1"></i> 新增活動
-                        </button>
+                        <div>
+                            <p class="font-bold text-gray-700">${f.return.no} | ${f.return.route}</p>
+                            <p class="text-gray-500">${f.return.time} (${f.return.duration})</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `).join('');
-        container.innerHTML = listHtml;
-    }
 
-    // Helper: 獲取活動圖標
-    function getIconForEventType(type) {
-        switch (type) {
-            case 'food': return 'fa-solid fa-utensils text-green-600';
-            case 'sight': return 'fa-solid fa-camera-retro text-yellow-600';
-            case 'highlight': return 'fa-solid fa-star primary-text';
-            case 'info': return 'fa-solid fa-plane-departure text-blue-600';
-            case 'activity': return 'fa-solid fa-shopping-bag text-purple-600';
-            default: return 'fa-solid fa-map-marker-alt text-gray-500';
-        }
-    }
-
-    // ================= PLAN - Firestore 寫入/修改邏輯 (CRUD Functions) =================
-
-    async function addDayToFirestore(day, date, order) {
-        const itineraryRef = getItineraryCollectionRef();
-        if (!itineraryRef) return;
-
-        showLoading('正在新增行程日...');
-
-        try {
-            // [修正 1] 移除手動添加的括號
-            // date 是 YYYY-MM-DD 格式
-            const dateObj = new Date(date + 'T00:00:00'); // 確保日期正確解析
-            // '03/07 (六)' (使用 'zh-TW')
-            const formattedDate = dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', weekday: 'short' });
-            
-            const newDay = {
-                day: day,
-                // [修正]: 只使用 toLocaleDateString 提供的格式，並修復星期幾的括號
-                date: formattedDate,
-                order: parseInt(order),
-                events: []
-            };
-            // 使用 addDoc 讓 Firestore 自動生成 Doc ID
-            await firebaseModules.addDoc(itineraryRef, newDay);
-            alertMessage('行程日新增成功！', 'primary-bg');
-            switchTab('plan'); // 成功後刷新
-        } catch (e) {
-            console.error("Error adding document:", e);
-            alertMessage('新增失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    async function updateDayInFirestore(docId, day, date, order) {
-        const itineraryRef = getItineraryCollectionRef();
-        if (!itineraryRef) return;
-
-        showLoading('正在更新行程日資訊...');
-
-        try {
-            const dayRef = firebaseModules.doc(itineraryRef, docId);
-            
-            // [修正 1] 移除手動添加的括號
-            // date 是 YYYY-MM-DD 格式
-            const dateObj = new Date(date + 'T00:00:00'); // 確保日期正確解析
-            const formattedDate = dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', weekday: 'short' });
-            
-            await firebaseModules.updateDoc(dayRef, {
-                day: day,
-                date: formattedDate, // 使用修正後的格式
-                order: parseInt(order)
-            });
-            alertMessage('行程日更新成功！', 'primary-bg');
-            switchTab('plan'); // 成功後刷新
-        } catch (e) {
-            console.error("Error updating document:", e);
-            alertMessage('更新失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    async function deleteDayFromFirestore(docId) {
-        const itineraryRef = getItineraryCollectionRef();
-        if (!itineraryRef) return;
-
-        showLoading('正在刪除行程日...');
-
-        try {
-            const dayRef = firebaseModules.doc(itineraryRef, docId);
-            await firebaseModules.deleteDoc(dayRef);
-            alertMessage('行程日刪除成功！', 'primary-bg');
-            switchTab('plan'); // 成功後刷新
-        } catch (e) {
-            console.error("Error deleting document:", e);
-            alertMessage('刪除失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    // [修正 2 & 3]: 確保 location 空字串會被轉為 null，避免 'undefined' 錯誤，並強制更新
-    async function addEventToDay(docId, eventData) {
-        const currentDay = cloudItineraryData.find(d => d.docId === docId);
-        if (!currentDay) return;
-
-        showLoading('正在新增活動...');
-        
-        // 關鍵修正: 如果 location 是空字串，則設為 null
-        const newLocation = eventData.location && eventData.location.trim() !== '' ? eventData.location : null;
-
-        const newEvent = {
-            time: eventData.time,
-            name: eventData.name,
-            location: newLocation,
-            type: eventData.type 
-        };
-
-        const updatedEvents = [...(currentDay.events || []), newEvent];
-        updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
-
-        try {
-            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
-                events: updatedEvents
-            });
-            alertMessage('活動新增成功！', 'primary-bg');
-            // [關鍵修正] 新增後手動觸發畫面重新渲染
-            switchTab('plan'); 
-        } catch (e) {
-            console.error("Error adding event:", e);
-            alertMessage('新增失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    // [修正 2 & 3]: 確保 location 空字串會被轉為 null，避免 'undefined' 錯誤，並強制更新
-    async function updateEventInDay(docId, eventIndex, eventData) {
-        const currentDay = cloudItineraryData.find(d => d.docId === docId);
-        if (!currentDay) return;
-
-        showLoading('正在更新活動...');
-        
-        // 關鍵修正: 如果 location 是空字串，則設為 null
-        const newLocation = eventData.location && eventData.location.trim() !== '' ? eventData.location : null;
-
-        const updatedEvents = [...(currentDay.events || [])];
-        
-        const updatedEvent = {
-            time: eventData.time,
-            name: eventData.name,
-            location: newLocation,
-            type: eventData.type 
-        };
-
-        updatedEvents[eventIndex] = updatedEvent;
-        updatedEvents.sort((a, b) => a.time.localeCompare(b.time)); // 依時間排序
-
-        try {
-            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
-                events: updatedEvents
-            });
-            alertMessage('活動更新成功！', 'primary-bg');
-            // [關鍵修正] 更新後手動觸發畫面重新渲染
-            switchTab('plan'); 
-        } catch (e) {
-            console.error("Error updating event:", e);
-            alertMessage('更新失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    async function deleteEventFromDay(docId, eventIndex) {
-        const currentDay = cloudItineraryData.find(d => d.docId === docId);
-        if (!currentDay) return;
-
-        showLoading('正在刪除活動...');
-        const updatedEvents = (currentDay.events || []).filter((_, index) => index !== eventIndex);
-
-        try {
-            await firebaseModules.updateDoc(firebaseModules.doc(getItineraryCollectionRef(), docId), {
-                events: updatedEvents
-            });
-            alertMessage('活動刪除成功！', 'primary-bg');
-            // [關鍵修正] 刪除後手動觸發畫面重新渲染
-            switchTab('plan'); 
-        } catch (e) {
-            console.error("Error deleting event:", e);
-            alertMessage('刪除失敗！請檢查連線或 Firestore 規則。', 'secondary-bg');
-        } finally {
-            hideLoading();
-        }
-    }
-
-
-    // ================= PLAN - 模態框 (Modal) 邏輯 =================
-
-    // 泛用模態框 HTML 結構
-    function createModal(id, title, bodyHtml, confirmText, onConfirm, cancelText = '取消') {
-        const existing = document.getElementById(id);
-        if (existing) existing.remove();
-
-        const modal = document.createElement('div');
-        modal.id = id;
-        // [修正 2 & 3]: 確保每次 Modal 都能獨立存在並移除殘餘資料
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4 transition-opacity duration-300';
-        modal.innerHTML = `
-            <div class="bg-card w-full max-w-sm rounded-xl shadow-2xl p-6 transform scale-95 transition-transform duration-300">
-                <h3 class="text-xl font-bold primary-text mb-4 border-b pb-2">${title}</h3>
-                <div id="${id}-body">${bodyHtml}</div>
-                <div class="flex justify-end space-x-3 mt-6 pt-4 border-t">
-                    <button onclick="closeModal('${id}')" class="text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">${cancelText}</button>
-                    <button id="${id}-confirm" class="primary-bg text-white px-4 py-2 rounded-lg font-bold hover:opacity-90">${confirmText}</button>
+                <!-- 住宿資訊卡片 (包含地圖連結) -->
+                <div class="bg-white p-4 rounded-xl shadow-md border-l-4 border-amber-400 text-xs flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-gray-700 text-sm">🏨 ${STATIC_TRAVEL_DATA.hotel}</p>
+                        <p class="text-gray-400 mt-0.5">${STATIC_TRAVEL_DATA.hotelAddr}</p>
+                    </div>
+                    <button onclick="showMapModal('${STATIC_TRAVEL_DATA.hotelAddr}', '${STATIC_TRAVEL_DATA.hotel}')" class="primary-bg text-white px-3 py-2 rounded-lg font-bold shadow-sm">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                    </button>
                 </div>
+
+                <button onclick="showAddDayModal()" class="w-full mt-2 primary-bg text-white py-2 rounded-full font-bold shadow-md">+ 新增行程日</button>
             </div>
+            <div id="p-list" class="space-y-6"></div>
         `;
-        document.body.appendChild(modal);
-
-        // 設置確認按鈕事件
-        document.getElementById(`${id}-confirm`).onclick = onConfirm;
-
-        // 顯示動畫
-        setTimeout(() => modal.classList.add('opacity-100'), 10);
-    }
-
-    function closeModal(id) {
-        const modal = document.getElementById(id);
-        if (modal) {
-            modal.classList.remove('opacity-100');
-            modal.classList.add('opacity-0');
-            setTimeout(() => modal.remove(), 300); // [修正 2 & 3]: 徹底移除 Modal
-        }
-    }
-
-    function showAddDayModal() {
-        const lastDayOrder = cloudItineraryData.length > 0 ? Math.max(...cloudItineraryData.map(d => d.order)) : 0;
-        const nextOrder = lastDayOrder + 1;
-        
-        // 獲取當前日期並格式化為 YYYY-MM-DD
-        const today = new Date().toISOString().slice(0, 10);
-
-        const body = `
-            <div class="space-y-3">
-                <input type="text" id="modal-day-name" placeholder="例如: D6 (自由活動)" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500 block mt-3">行程日期 (點擊右側日曆)</label>
-                <!-- [優化] 使用 type="date" 啟用日曆選擇器 -->
-                <input type="date" id="modal-day-date" value="${today}" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500 block mt-3">排序 (數字越小越前面)</label>
-                <input type="number" id="modal-day-order" value="${nextOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
-            </div>
-        `;
-
-        createModal('add-day-modal', '新增行程日', body, '確認新增', () => {
-            const day = document.getElementById('modal-day-name').value;
-            const date = document.getElementById('modal-day-date').value; // YYYY-MM-DD 格式
-            const order = document.getElementById('modal-day-order').value;
-            if (day && date && order) {
-                addDayToFirestore(day, date, order);
-                closeModal('add-day-modal');
-            } else {
-                alertMessage('請填寫完整資訊！', 'secondary-bg');
-            }
+        const q = firebaseModules.query(getColRef(), firebaseModules.orderBy('order', 'asc'));
+        unsubscribeItinerary = firebaseModules.onSnapshot(q, (snap) => {
+            cloudItineraryData = snap.docs.map(d => ({ ...d.data(), docId: d.id }));
+            if (cloudItineraryData.length === 0) { DEFAULT_ITINERARY.forEach(d => firebaseModules.setDoc(firebaseModules.doc(getColRef(), d.id), d)); return; }
+            document.getElementById('p-list').innerHTML = cloudItineraryData.map(day => `
+                <div class="p-4 bg-card rounded-xl shadow relative">
+                    <div class="absolute top-2 right-2 flex space-x-2 text-gray-300">
+                        <button onclick="showEditDayModal('${day.docId}','${day.day}','${day.date}',${day.order})"><i class="fa-solid fa-edit"></i></button>
+                        <button onclick="confirmDelDay('${day.docId}')"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <h3 class="font-bold secondary-text border-b pb-2 mb-4">${day.day} - ${day.date}</h3>
+                    <div class="space-y-4">
+                        ${(day.events || []).map((ev, i) => `
+                            <div class="timeline-item group">
+                                <div class="ml-4 flex justify-between items-start">
+                                    <div>
+                                        <p class="text-[10px] text-gray-400 font-mono">${ev.time}</p>
+                                        <p class="text-sm font-semibold text-gray-800">${ev.name}</p>
+                                        ${ev.location?`<button onclick="showMapModal('${ev.location}','${ev.name}')" class="text-[10px] mt-1 primary-bg text-white px-2 py-0.5 rounded-full">地圖</button>`:''}
+                                    </div>
+                                    <div class="opacity-0 group-hover:opacity-100 flex transition space-x-2">
+                                        <button onclick="showEditEventModal('${day.docId}', ${i})" class="text-gray-400 hover:text-blue-400"><i class="fa-solid fa-pencil text-xs"></i></button>
+                                        <button onclick="confirmDelEv('${day.docId}', ${i}, '${ev.name}')" class="text-red-200 hover:text-red-400"><i class="fa-solid fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                        <button onclick="showAddEvModal('${day.docId}')" class="w-full py-2 border-2 border-dashed border-gray-100 rounded-lg text-xs text-gray-300">+ 新增活動</button>
+                    </div>
+                </div>
+            `).join('');
         });
-    }
-
-    // Helper: 將顯示格式 'MM/DD (星期)' 轉換為 YYYY-MM-DD (用於 <input type="date">)
-    function formatDateToISO(dateString) {
-        // 假設行程為 2026 年
-        const year = '2026'; 
-        // 從 'MM/DD (星期)' 中提取 MM/DD。注意：dayPlan.date 可能為 '03/07 (六)' 或 '03/07(六)'
-        const match = dateString.match(/(\d{2})\/(\d{2})/);
-        if (match) {
-            const month = match[1];
-            const day = match[2];
-            return `${year}-${month}-${day}`;
-        }
-        return '';
-    }
-
-    function showEditDayModal(docId, currentDay, currentDate, currentOrder) {
-        // [優化] 將 Firestore 儲存的顯示格式轉換回 ISO 格式，以供 type="date" 使用
-        const isoDate = formatDateToISO(currentDate);
-
-        const body = `
-            <div class="space-y-3">
-                <label class="text-xs text-gray-500">行程日名稱 (例如: D1)</label>
-                <input type="text" id="modal-day-name" value="${currentDay}" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500">日期 (點擊右側日曆)</label>
-                <!-- [優化] 使用 type="date" 啟用日曆選擇器 -->
-                <input type="date" id="modal-day-date" value="${isoDate}" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500">排序 (數字越小越前面)</label>
-                <input type="number" id="modal-day-order" value="${currentOrder}" class="w-full p-2 border rounded-md focus:ring primary-text">
-            </div>
-        `;
-
-        createModal('edit-day-modal', '編輯行程日資訊', body, '儲存變更', () => {
-            const day = document.getElementById('modal-day-name').value;
-            const date = document.getElementById('modal-day-date').value; // YYYY-MM-DD 格式
-            const order = document.getElementById('modal-day-order').value;
-            if (day && date && order) {
-                updateDayInFirestore(docId, day, date, order);
-                closeModal('edit-day-modal');
-            } else {
-                alertMessage('請填寫完整資訊！', 'secondary-bg');
-            }
-        });
-    }
-
-    function confirmDeleteDay(docId, dayName) {
-        const body = `<p>您確定要刪除 **${dayName}** 這一天的所有行程嗎？此操作無法復原。</p>`;
-        createModal('confirm-delete-day-modal', '確認刪除行程日', body, '確定刪除', () => {
-            deleteDayFromFirestore(docId);
-            closeModal('confirm-delete-day-modal');
-        }, '取消');
-    }
-
-    function showAddEventModal(docId) {
-        const body = `
-            <form id="event-form" class="space-y-3">
-                <input type="text" id="modal-event-time" placeholder="時間 (例如: 10:30)" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <input type="text" id="modal-event-name" placeholder="活動名稱 (例如: 午餐/景點名稱)" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <input type="text" id="modal-event-location" placeholder="地點名稱 (用於 Google Maps 連結，可選)" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
-                    <option value="activity">活動/購物 (activity)</option>
-                    <option value="food">用餐 (food)</option>
-                    <option value="sight">景點 (sight)</option>
-                    <option value="highlight">重要集合/提醒 (highlight)</option>
-                    <option value="info">交通/資訊 (info)</option>
-                </select>
-            </form>
-        `;
-
-        createModal('add-event-modal', '新增活動', body, '確認新增', () => {
-            const time = document.getElementById('modal-event-time').value;
-            const name = document.getElementById('modal-event-name').value;
-            const location = document.getElementById('modal-event-location').value;
-            const type = document.getElementById('modal-event-type').value;
-
-            if (time && name) {
-                const eventData = { time, name, location, type };
-                addEventToDay(docId, eventData);
-                closeModal('add-event-modal');
-            } else {
-                alertMessage('時間和活動名稱為必填！', 'secondary-bg');
-            }
-        });
-    }
-
-    function showEditEventModal(docId, eventIndex) {
-        // [修正 2 & 3]: 確保獲取最新的數據
-        const currentDay = cloudItineraryData.find(d => d.docId === docId);
-        if (!currentDay || !currentDay.events || !currentDay.events[eventIndex]) {
-            alertMessage('無法載入活動數據。請重試。', 'secondary-bg');
-            return;
-        }
-        const currentEvent = currentDay.events[eventIndex];
-
-        const body = `
-            <form id="event-form" class="space-y-3">
-                <label class="text-xs text-gray-500">時間</label>
-                <input type="text" id="modal-event-time" value="${currentEvent.time}" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500">活動名稱</label>
-                <input type="text" id="modal-event-name" value="${currentEvent.name}" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500">地點名稱 (Google Maps)</label>
-                <!-- [修正]: 當 location 是 null 時，顯示空字串而不是 'null' -->
-                <input type="text" id="modal-event-location" value="${currentEvent.location || ''}" placeholder="可選" class="w-full p-2 border rounded-md focus:ring primary-text">
-                <label class="text-xs text-gray-500">活動類型</label>
-                <select id="modal-event-type" class="w-full p-2 border rounded-md focus:ring primary-text">
-                    <option value="activity" ${currentEvent.type === 'activity' ? 'selected' : ''}>活動/購物 (activity)</option>
-                    <option value="food" ${currentEvent.type === 'food' ? 'selected' : ''}>用餐 (food)</option>
-                    <option value="sight" ${currentEvent.type === 'sight' ? 'selected' : ''}>景點 (sight)</option>
-                    <option value="highlight" ${currentEvent.type === 'highlight' ? 'selected' : ''}>重要集合/提醒 (highlight)</option>
-                    <option value="info" ${currentEvent.type === 'info' ? 'selected' : ''}>交通/資訊 (info)</option>
-                </select>
-            </form>
-        `;
-
-        createModal('edit-event-modal', '編輯活動', body, '儲存變更', () => {
-            const time = document.getElementById('modal-event-time').value;
-            const name = document.getElementById('modal-event-name').value;
-            const location = document.getElementById('modal-event-location').value;
-            const type = document.getElementById('modal-event-type').value;
-
-            if (time && name) {
-                const eventData = { time, name, location, type };
-                updateEventInDay(docId, eventIndex, eventData);
-                closeModal('edit-event-modal');
-            } else {
-                alertMessage('時間和活動名稱為必填！', 'secondary-bg');
-            }
-        });
-    }
-
-    function confirmDeleteEvent(docId, eventIndex, eventName) {
-        const body = `<p>您確定要刪除 **${eventName}** 這個活動嗎？</p>`;
-        createModal('confirm-delete-event-modal', '確認刪除活動', body, '確定刪除', () => {
-            deleteEventFromDay(docId, eventIndex);
-            closeModal('confirm-delete-event-modal');
-        }, '取消');
     }
 
     // ====================================================================
-    // 5. GUIDE (深度導覽) 渲染函數 - 已更新圖片/地圖邏輯
+    // 5. GUIDE (深度導覽)
     // ====================================================================
-    
-    // Helper: 獲取地點 Emoji
-    function getLocationEmoji(name) {
-        if (name.includes('國際通')) return '🛍️';
-        if (name.includes('波上宮')) return '⛩️';
-        if (name.includes('首里城')) return '🏯';
-        if (name.includes('Outlet') || name.includes('DFS')) return '👜';
-        if (name.includes('壺屋')) return '🏺';
-        if (name.includes('瀨長島')) return '🏖️';
-        if (name.includes('牧志公設市場')) return '🐟';
-        if (name.includes('福州園')) return '🌳';
-        if (name.includes('DMM')) return '🐠';
-        return '📍';
-    }
-    
-    // Helper: 獲取食物 Emoji
-    function getFoodEmoji(name) {
-        if (name.includes('沖繩麵')) return '🍜';
-        if (name.includes('塔可飯')) return '🌮';
-        if (name.includes('阿古豬')) return '🐷';
-        if (name.includes('海葡萄')) return '🍇';
-        if (name.includes('紅芋塔')) return '🍠';
-        if (name.includes('Blue Seal')) return '🍦';
-        if (name.includes('石垣牛') || name.includes('宮古牛')) return '🥩';
-        if (name.includes('苦瓜炒蛋')) return '🍳';
-        if (name.includes('代客料理海鮮')) return '🦐';
-        if (name.includes('花生豆腐')) return '🍮';
-        return '🍽️';
+    function getLocationEmoji(n) {
+        const m = { '國際通': '🛍️', '波上宮': '⛩️', '首里城': '🏯', '瀨長島': '🏖️', '市場': '🐟', '水族館': '🐠', '福州園': '🌳', 'DFS': '💎', 'Outlet': '👜', '壺屋': '🏺' };
+        for (let key in m) if (n.includes(key)) return m[key]; return '📍';
     }
 
+    function getFoodEmoji(n) {
+        const m = { '麵': '🍜', '豬': '🐷', '牛': '🥩', '冰': '🍦', '塔可': '🌮', '海葡萄': '🍇', '紅芋': '🍠', '苦瓜': '🍳', '豆腐': '🍮', '海鮮': '🦐' };
+        for (let key in m) if (n.includes(key)) return m[key]; return '🍽️';
+    }
 
     function renderGuide(container) {
-        const topSpots = [
-            { name: "國際通 (Kokusai Street)", desc: "那霸市最熱鬧的街道，長約 1.6 公里，有「奇蹟的一英里」之稱，購物和美食聚集地。", mapLocation: "沖繩國際通", hours: "全天開放，店家約 10:00 - 22:00", type: 'sight' },
-            { name: "波上宮 (Naminoue Shrine)", desc: "建於懸崖上的神社，面向大海，是琉球八社之首，可步行或搭乘單軌電車至縣廳前站。", mapLocation: "波上宮", hours: "09:00 - 17:00 (神社參拜時間)", type: 'sight' },
-            { name: "首里城公園 (Shurijo Castle)", desc: "琉球王國的政治、文化中心，融合中日建築風格。搭乘單軌電車至首里站後步行或轉乘巴士。", mapLocation: "首里城", hours: "08:30 - 18:00 (依季節變動)", type: 'sight' },
-            { name: "沖繩 Outlet Mall Ashibinaa", desc: "那霸市區附近的大型暢貨中心，靠近那霸機場，有巴士直達，非常適合回程前購物。", mapLocation: "沖繩 Outlet Mall Ashibinaa", hours: "10:00 - 20:00", type: 'activity' },
-            { name: "T Galleria Okinawa (DFS 免稅店)", desc: "位於 Omoromachi 站，是亞洲最大的路面免稅店之一，可在回國前購買免稅精品。", mapLocation: "T Galleria Okinawa", hours: "10:00 - 20:00", type: 'activity' },
-            { name: "壺屋燒物博物館 (Tsuboya Pottery Museum)", desc: "展示沖繩傳統陶器「壺屋燒」的歷史和技藝，位於充滿古樸氣息的壺屋通內。", mapLocation: "壺屋燒物博物館", hours: "10:00 - 18:00 (週一休館)", type: 'sight' },
-            { name: "瀨長島 Umikaji Terrace", desc: "位於機場附近的小島，擁有海景溫泉和白色地中海風格的購物餐飲區，適合拍照和看飛機起降。", mapLocation: "瀬長島ウミカジテラス", hours: "10:00 - 21:00 (依店家而異)", type: 'sight' },
-            { name: "牧志公設市場 (Makishi Public Market)", desc: "被譽為「沖繩的廚房」，可以購買新鮮海產後請店家代客料理，體驗在地美食文化。", mapLocation: "那霸市第一牧志公設市場", hours: "08:00 - 22:00 (每月部分週日休市)", type: 'food' },
-            { name: "福州園 (Fukushu Garden)", desc: "那霸市區的中國式庭園，景致優美，適合漫步休憩，交通便利。", mapLocation: "福州園", hours: "09:00 - 21:00", type: 'sight' },
-            { name: "DMM Kariyushi水族館", desc: "那霸市南部的現代化水族館，強調光影與科技結合，與美麗海水族館風格不同，那霸市區有公車可達。", mapLocation: "DMM Kariyushi水族館", hours: "10:00 - 21:00 (依季節變動)", type: 'sight' }
+        const spots = [
+            { n: "國際通", d: "那霸最熱鬧街道，購物天堂。", l: "國際通", h: "10:00-22:00" },
+            { n: "波上宮", d: "懸崖上的神社，有海邊沙灘。", l: "波上宮", h: "09:00-17:00" },
+            { n: "首里城", d: "琉球王國象徵，世界遺產遺址。", l: "首里城", h: "08:30-18:00" },
+            { n: "瀨長島 Umikaji", d: "白色地中海風，看飛機起降。", l: "瀨長島", h: "10:00-21:00" },
+            { n: "牧志公設市場", d: "沖繩廚房，新鮮海產代客料理。", l: "第一牧志公設市場", h: "08:00-21:00" },
+            { n: "DMM Kariyushi 水族館", d: "現代化影像水族館，交通便利。", l: "DMM水族館", h: "10:00-21:00" },
+            { n: "福州園", d: "精緻中式園林，市區綠洲。", l: "福州園", h: "09:00-21:00" },
+            { n: "T Galleria (DFS)", d: "精品免稅百貨，位於新都心。", l: "T Galleria", h: "10:00-20:00" },
+            { n: "Ashibinaa Outlet", d: "暢貨中心，靠近機場適合最後採買。", l: "Ashibinaa", h: "10:00-20:00" },
+            { n: "壺屋通", d: "傳統陶藝街道，文青散策。", l: "壺屋通", h: "10:00-18:00" }
+        ];
+        const foods = [
+            { n: "沖繩麵 (Soba)", b: "小麥製麵，配上軟嫩豬肉。" }, { n: "阿古豬 (Agu)", b: "油脂甘甜的沖繩國寶豬。" },
+            { n: "石垣牛 (Beef)", b: "入口即化的頂級和牛。" }, { n: "Blue Seal 冰淇淋", b: "沖繩代表性美式冰淇淋。" },
+            { n: "塔可飯 (Taco Rice)", b: "美墨風味與米飯的完美結合。" }, { n: "海葡萄", b: "大海的魚子醬，口感獨特。" },
+            { n: "紅芋塔", b: "伴手禮首選，紫色紅芋製作。" }, { n: "苦瓜炒蛋", b: "經典家常菜，健康又美味。" },
+            { n: "花生豆腐", b: "濃郁花生香氣，綿密紮實。" }, { n: "代客料理海鮮", b: "市場挑選漁獲立即品嚐。" }
         ];
 
-        const topFoods = [
-            { name: "沖繩麵 (Okinawa Soba)", brief: "使用小麥粉製成，口感Q彈，湯頭清淡，搭配燉煮的肉塊。", mapLocation: "沖繩そば専門店", hours: "依店家而異", type: 'food' },
-            { name: "塔可飯 (Taco Rice)", brief: "米飯上鋪滿美墨式塔可肉醬、起司、生菜和番茄，沖繩特有混搭美食。", mapLocation: "タコライス店", hours: "依店家而異", type: 'food' },
-            { name: "阿古豬 (Aguu Pork)", brief: "沖繩特有的黑豬品種，脂肪融點低、肉質鮮甜，適合涮涮鍋或烤肉。", mapLocation: "アグー豚料理店", hours: "依店家而異", type: 'food' },
-            { name: "海葡萄 (Umi-Budo)", brief: "一種海藻，外觀像一串串綠色小葡萄，口感鹹脆爆破，常作為下酒菜或沙拉。", mapLocation: "海ぶどう専門", hours: "依店家而異", type: 'food' },
-            { name: "沖繩紅芋塔", brief: "使用沖繩特產紅芋製作的甜點，香甜可口，是經典的伴手禮。", mapLocation: "紅いもタルト店", hours: "依店家而異", type: 'food' },
-            { name: "Blue Seal 冰淇淋", brief: "源自美國並紮根沖繩的冰淇淋品牌，口味選擇多樣，是海島消暑聖品。", mapLocation: "Blue Seal 冰淇淋", hours: "依分店而異", type: 'food' },
-            { name: "石垣牛/宮古牛", brief: "沖繩離島的頂級和牛，肉質細嫩，在沖繩本島也能找到專賣店。", mapLocation: "石垣牛焼肉店", hours: "依店家而異", type: 'food' },
-            { name: "苦瓜炒蛋 (Goya Chanpuru)", brief: "沖繩代表性家庭料理，苦瓜、雞蛋、豆腐和午餐肉一起翻炒，清爽解膩。", mapLocation: "ゴーヤチャンプルー店", hours: "依店家而異", type: 'food' },
-            { name: "代客料理海鮮", brief: "在牧志市場購買新鮮魚蝦，直接請二樓店家烹煮，新鮮度無可匹敵。", mapLocation: "那覇市第一牧志公設市場", hours: "依店家而異", type: 'food' },
-            { name: "花生豆腐 (Jimami Tofu)", brief: "使用花生製成的豆腐，口感軟糯滑順，常搭配甜醬油食用，是獨特的甜點/開胃菜。", mapLocation: "ジーマーミ豆腐店", hours: "依店家而異", type: 'food' }
-        ];
-
-        const content = `
-            <div class="space-y-8">
-                <!-- 沖繩 TOP 10 景點 (那霸為主) -->
-                <div class="bg-card p-6 rounded-xl shadow-lg border-l-4 border-primary">
-                    <h2 class="text-2xl font-bold primary-text mb-4 flex items-center"><i class="fa-solid fa-map-location-dot mr-2"></i> 沖繩 TOP 10 交通便利景點</h2>
-                    <p class="text-sm text-gray-500 mb-6">以那霸市區為中心，搭乘單軌電車或步行可達的精選景點。</p>
+        container.innerHTML = `
+            <div class="space-y-8 pb-4">
+                <div class="bg-card p-6 rounded-xl shadow border-l-4 border-primary">
+                    <h2 class="font-bold primary-text mb-4 flex items-center"><i class="fa-solid fa-map-location-dot mr-2"></i>沖繩 TOP 10 景點</h2>
                     <div class="space-y-6">
-                        ${topSpots.map((spot, index) => `
-                            <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
-                                <!-- 圖片已更換為 Emoji + Card -->
-                                <div class="w-24 h-20 bg-secondary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex flex-col items-center justify-center">
-                                    <span class="text-2xl">${getLocationEmoji(spot.name)}</span>
-                                    <span class="text-xs font-medium mt-1 text-gray-700">${spot.name.split(' ')[0]}</span>
-                                </div>
+                        ${spots.map((s, i) => `
+                            <div class="flex items-start border-b border-gray-50 pb-4 last:border-0">
+                                <div class="w-14 h-14 bg-secondary/10 rounded-xl flex-shrink-0 flex items-center justify-center text-2xl mr-4">${getLocationEmoji(s.n)}</div>
                                 <div class="flex-grow">
-                                    <h3 class="font-bold secondary-text text-lg">${index + 1}. ${spot.name}</h3>
-                                    <p class="text-sm text-gray-600 mt-1">${spot.desc}</p>
-                                    <p class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-clock mr-1"></i> **營業時間:** ${spot.hours}</p>
-                                    <div class="mt-2">
-                                        <!-- 點擊後開啟 Modal 提示，導向地圖 App -->
-                                        <button onclick="showMapModal('${spot.mapLocation}', '${spot.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full transition duration-300 hover:opacity-80">
-                                            <i class="fa-solid fa-map-marker-alt mr-1"></i> Google 地圖 (導航)
-                                        </button>
+                                    <h4 class="font-bold text-sm text-gray-800">${i+1}. ${s.n}</h4>
+                                    <p class="text-[11px] text-gray-500 mt-1">${s.d}</p>
+                                    <div class="flex space-x-2 mt-2">
+                                        <button onclick="showMapModal('${s.l}','${s.n}')" class="text-[10px] primary-bg text-white px-2 py-0.5 rounded-full">地圖導航</button>
+                                        <span class="text-[10px] text-gray-400">🕒 ${s.h}</span>
                                     </div>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                 </div>
-
-                <!-- 沖繩 TOP 10 美食 -->
-                 <div class="bg-card p-6 rounded-xl shadow-lg border-l-4 border-secondary">
-                    <h2 class="text-2xl font-bold secondary-text mb-4 flex items-center"><i class="fa-solid fa-bowl-food mr-2"></i> 沖繩 TOP 10 必嚐美食</h2>
-                    <p class="text-sm text-gray-500 mb-6">絕不能錯過的當地特色料理和知名小吃。</p>
-                     <div class="space-y-6">
-                        ${topFoods.map((food, index) => `
-                            <div class="flex border-b pb-4 last:border-b-0 last:pb-0">
-                                <!-- 圖片已更換為 Emoji + Card -->
-                                <div class="w-24 h-20 bg-primary/20 rounded-lg mr-4 flex-shrink-0 shadow-md flex flex-col items-center justify-center">
-                                    <span class="text-2xl">${getFoodEmoji(food.name)}</span>
-                                    <!-- [修正]: 確保顯示食物名稱，而不是 undefined -->
-                                    <span class="text-xs font-medium mt-1 text-gray-700">${food.name.split(' ')[0]}</span>
+                <div class="bg-card p-6 rounded-xl shadow border-l-4 border-secondary">
+                    <h2 class="font-bold secondary-text mb-4 flex items-center"><i class="fa-solid fa-utensils mr-2"></i>沖繩 TOP 10 美食</h2>
+                    <div class="grid grid-cols-1 gap-4">
+                        ${foods.map((f, i) => `
+                            <div class="flex items-center p-3 bg-secondary/5 rounded-lg border border-secondary/10">
+                                <div class="text-xl mr-3">${getFoodEmoji(f.n)}</div>
+                                <div>
+                                    <h4 class="font-bold text-xs text-gray-700">${i+1}. ${f.n}</h4>
+                                    <p class="text-[10px] text-gray-400">${f.b}</p>
                                 </div>
-                                <div class="flex-grow">
-                                    <h3 class="font-bold primary-text text-lg">${index + 1}. ${food.name}</h3>
-                                    <p class="text-sm text-gray-600 mt-1">${food.brief}</p>
-                                    <p class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-clock mr-1"></i> **營業時間:** ${food.hours}</p>
-                                    <!-- 點擊後開啟 Modal 提示，導向地圖 App -->
-                                    <button onclick="showMapModal('${food.mapLocation}', '${food.name}')" class="text-xs inline-flex items-center px-2 py-1 primary-bg text-white rounded-full mt-2 transition duration-300 hover:opacity-80">
-                                        <i class="fa-solid fa-map-marker-alt mr-1"></i> Google 地圖 (導航)
-                                    </button>
-                                </div>
+                                <a href="https://www.google.com/search?q=${encodeURIComponent(f.n + ' 沖繩 推薦')}" target="_blank" class="ml-auto text-[10px] secondary-text font-bold underline">看食記</a>
                             </div>
                         `).join('')}
                     </div>
                 </div>
             </div>
         `;
-        container.innerHTML = content;
     }
 
-
     // ====================================================================
-    // 6. WALLET (記帳與匯率) 渲染與邏輯 (維持 LocalStorage)
+    // 6. WALLET (記帳與匯率)
     // ====================================================================
-
-    let currentExchangeRate = initialRate;
-
-    function renderWallet(container) {
-        currentExchangeRate = parseFloat(localStorage.getItem(TWD_RATE_KEY)) || initialRate;
-
-        const html = `
+    async function renderWallet(container) {
+        const rate = await updateRealtimeRate();
+        const expenses = loadData(LS_KEYS.WALLET, []);
+        container.innerHTML = `
             <div class="space-y-6">
-                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-yellow-400 text-sm text-gray-700 font-medium">
-                    <i class="fa-solid fa-user-lock mr-2 text-yellow-500"></i> **記帳資料僅儲存在本機**，不與雲端同步。
+                <div class="bg-white p-5 rounded-xl shadow border-l-4 border-yellow-400">
+                    <h3 class="font-bold mb-2 text-sm">即時匯率 (JPY → TWD)</h3>
+                    <div class="flex justify-between items-center bg-yellow-50 p-2 rounded mb-4">
+                        <span class="text-[10px] text-yellow-700">更新時間: ${new Date().toLocaleTimeString()}</span>
+                        <b class="primary-text text-sm">1 JPY ≈ ${rate.toFixed(4)} TWD</b>
+                    </div>
+                    <input id="j-in" type="number" oninput="document.getElementById('t-out').innerText = (this.value * ${rate}).toFixed(0)" placeholder="輸入日幣金額" class="w-full p-3 border rounded-lg text-xl font-bold focus:ring-2 focus:ring-primary outline-none">
+                    <p class="mt-2 text-center text-gray-400">≈ NT$ <span id="t-out" class="primary-text text-2xl font-bold">0</span></p>
                 </div>
-                <!-- 匯率換算器 -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-yellow-400">
-                    <h2 class="text-xl font-bold secondary-text mb-3 flex items-center"><i class="fa-solid fa-calculator mr-2"></i> 即時匯率換算</h2>
-                    <div class="flex items-center justify-between mb-3 text-sm">
-                        <span class="text-gray-600">當前匯率 (1 JPY ≈ TWD):</span>
-                        <div class="flex items-center">
-                            <input type="number" step="0.001" id="rate-input" value="${currentExchangeRate.toFixed(4)}" class="w-20 text-right p-1 border rounded-md text-gray-700 focus:ring primary-text">
-                            <button onclick="updateExchangeRate()" class="ml-2 secondary-bg text-white px-2 py-1 rounded-md text-xs hover:opacity-90">更新</button>
-                        </div>
-                    </div>
-                    <input type="text" id="calc-input" placeholder="輸入算式 (例如: 500+200*3)" class="w-full text-2xl font-mono p-3 mb-3 border rounded-lg focus:ring primary-text text-right" onkeyup="if(event.key === 'Enter') performCalculation()">
-                    <div class="flex justify-between items-center bg-gray-100 p-3 rounded-lg">
-                        <div>
-                            <p class="text-xs text-gray-500">日幣 (JPY) 總額</p>
-                            <p id="calc-jpy" class="text-xl font-bold text-gray-800">0</p>
-                        </div>
-                        <i class="fa-solid fa-arrows-right-left primary-text"></i>
-                        <div>
-                            <p class="text-xs text-gray-500 text-right">台幣 (TWD) 估算</p>
-                            <p id="calc-twd" class="text-xl font-bold primary-text text-right">0</p>
-                        </div>
-                    </div>
-                    <button onclick="performCalculation()" class="w-full primary-bg text-white p-3 mt-3 rounded-lg font-bold shadow-md hover:opacity-90">換算 / 計算 (=)</button>
+                <div class="bg-white p-5 rounded-xl shadow">
+                    <h3 class="font-bold mb-4">新增記帳</h3>
+                    <input id="en" placeholder="品項名稱" class="w-full p-2 border mb-2 rounded text-sm">
+                    <input id="ea" type="number" placeholder="金額 (JPY)" class="w-full p-2 border mb-4 rounded text-sm">
+                    <button onclick="handleSaveExp()" class="w-full secondary-bg text-white py-3 rounded-xl font-bold shadow-md">儲存消費紀錄</button>
                 </div>
-
-                <!-- 記帳功能 -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-primary">
-                    <h2 class="text-xl font-bold primary-text mb-4 flex items-center"><i class="fa-solid fa-pen-to-square mr-2"></i> 新增記帳</h2>
-                    <form id="expense-form" class="space-y-3">
-                        <div>
-                            <label for="item-name" class="text-sm font-medium text-gray-700">品項名稱</label>
-                            <input type="text" id="item-name" placeholder="晚餐/門票/零食..." required class="w-full p-2 border rounded-md focus:ring primary-text">
-                        </div>
-                        <div>
-                            <label for="item-amount" class="text-sm font-medium text-gray-700">日幣金額 (JPY)</label>
-                            <input type="number" id="item-amount" placeholder="5000" required class="w-full p-2 border rounded-md focus:ring primary-text">
-                        </div>
-                        <div class="flex justify-between items-center">
-                            <label for="photo-upload" class="primary-bg text-white px-4 py-2 rounded-lg font-medium cursor-pointer shadow-md hover:opacity-90 transition duration-150">
-                                <i class="fa-solid fa-camera mr-2"></i> 拍照 / 上傳照片
-                            </label>
-                            <input type="file" id="photo-upload" accept="image/*" class="file-input-hidden" onchange="previewAndCompressImage(event)">
-                            <img id="photo-preview" class="w-12 h-12 rounded-lg object-cover border hidden" alt="照片預覽">
-                            <input type="hidden" id="base64-image" value="">
-                        </div>
-                        <button type="submit" class="w-full secondary-bg text-white p-3 rounded-lg font-bold shadow-md hover:opacity-90">記錄消費</button>
-                    </form>
-                </div>
-
-                <!-- 記帳歷史列表 -->
-                <div class="mt-8">
-                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-list-ul mr-2"></i> 記帳歷史</h2>
-                    <div id="expense-list" class="space-y-3">
-                        <!-- 歷史記錄會在此處渲染 -->
-                    </div>
-                    <div id="expense-summary" class="mt-4 p-4 bg-white rounded-xl shadow-lg text-center font-bold">
-                        <p class="text-gray-700">總計：<span class="text-lg primary-text" id="total-jpy">0 JPY</span> (<span class="text-lg secondary-text" id="total-twd">0 TWD</span>)</p>
-                    </div>
+                <div id="exp-list" class="space-y-2">
+                    ${expenses.map(e => `<div class="bg-white p-3 rounded shadow-sm flex justify-between items-center text-sm border-b border-gray-50"><span>${e.n}</span><div class="text-right"><b class="primary-text">${e.a} JPY</b><p class="text-[10px] text-gray-300">${(e.a * rate).toFixed(0)} TWD</p></div></div>`).join('')}
                 </div>
             </div>
         `;
-        container.innerHTML = html;
-
-        document.getElementById('expense-form').onsubmit = addExpense;
-        loadExpenses();
     }
-
-    // [WALLET 相關的 JS 函數 (updateExchangeRate, performCalculation, safeEval, previewAndCompressImage, addExpense, loadExpenses, deleteExpense)]
-    function updateExchangeRate() { /* ... */
-        const input = document.getElementById('rate-input');
-        const newRate = parseFloat(input.value);
-        if (newRate > 0) {
-            currentExchangeRate = newRate;
-            localStorage.setItem(TWD_RATE_KEY, newRate.toString());
-            performCalculation();
-            alertMessage('匯率更新成功！', 'primary-bg');
-        } else {
-            alertMessage('請輸入有效的匯率！', 'secondary-bg');
-        }
-    }
-
-    function performCalculation() { /* ... */
-        const input = document.getElementById('calc-input');
-        const jpyDisplay = document.getElementById('calc-jpy');
-        const twdDisplay = document.getElementById('calc-twd');
-        const expression = input.value.trim();
-
-        if (!expression) {
-            jpyDisplay.textContent = '0';
-            twdDisplay.textContent = '0';
-            return;
-        }
-
-        try {
-            const resultJPY = safeEval(expression);
-            if (typeof resultJPY === 'number' && isFinite(resultJPY)) {
-                const resultTWD = resultJPY * currentExchangeRate;
-                jpyDisplay.textContent = resultJPY.toFixed(0).toLocaleString('en-US');
-                twdDisplay.textContent = resultTWD.toFixed(0).toLocaleString('en-US');
-            } else {
-                jpyDisplay.textContent = '錯誤';
-                twdDisplay.textContent = '錯誤';
-            }
-        } catch (e) {
-            jpyDisplay.textContent = '無效算式';
-            twdDisplay.textContent = '0';
-        }
-    }
-
-    function safeEval(expression) { /* ... */
-        const safeExpression = expression.replace(/[^-()\d/*+. ]/g, '');
-        return new Function('return ' + safeExpression)();
-    }
-
-    function previewAndCompressImage(event) { /* ... */
-        const file = event.target.files[0];
-        const preview = document.getElementById('photo-preview');
-        const base64Input = document.getElementById('base64-image');
-
-        if (!file) {
-            preview.classList.add('hidden');
-            base64Input.value = '';
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const img = new Image();
-            img.onload = function() {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 200;
-                const scaleSize = MAX_WIDTH / img.width;
-                canvas.width = MAX_WIDTH;
-                canvas.height = img.height * scaleSize;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
-
-                preview.src = compressedBase64;
-                preview.classList.remove('hidden');
-                base64Input.value = compressedBase64;
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
-
-    function addExpense(e) { /* ... */
-        e.preventDefault();
-
-        const nameInput = document.getElementById('item-name');
-        const amountInput = document.getElementById('item-amount');
-        const base64Image = document.getElementById('base64-image');
-
-        const expense = {
-            id: crypto.randomUUID(),
-            name: nameInput.value,
-            jpy: parseFloat(amountInput.value),
-            image: base64Image.value,
-            date: new Date().toISOString()
-        };
-
-        if (isNaN(expense.jpy) || expense.jpy <= 0) {
-            alertMessage('請輸入有效的日幣金額！', 'secondary-bg');
-            return;
-        }
-
-        const expenses = loadData(LS_KEYS.WALLET, []);
-        expenses.unshift(expense);
-        saveData(LS_KEYS.WALLET, expenses);
-
-        e.target.reset();
-        document.getElementById('photo-preview').classList.add('hidden');
-        base64Image.value = '';
-
-        loadExpenses();
-        alertMessage('消費記錄成功！', 'primary-bg');
-    }
-
-    function loadExpenses() { /* ... */
-        const expenses = loadData(LS_KEYS.WALLET, []);
-        const listContainer = document.getElementById('expense-list');
-        const totalJPYDisplay = document.getElementById('total-jpy');
-        const totalTWDDisplay = document.getElementById('total-twd');
-
-        if (!listContainer || !totalJPYDisplay) return;
-
-        let totalJPY = 0;
-        const rate = parseFloat(localStorage.getItem(TWD_RATE_KEY)) || initialRate;
-
-        if (expenses.length === 0) {
-            listContainer.innerHTML = '<p class="text-center text-gray-500 p-4">目前沒有記帳記錄。</p>';
-        } else {
-            listContainer.innerHTML = expenses.map(item => `
-                    <div class="flex items-center p-3 bg-white rounded-lg shadow-md hover:shadow-lg transition duration-150">
-                        ${item.image ? `
-                            <img src="${item.image}" alt="收據" class="w-12 h-12 object-cover rounded-md mr-3 flex-shrink-0">
-                        ` : `
-                            <div class="w-12 h-12 bg-gray-200 rounded-md mr-3 flex-shrink-0 flex items-center justify-center text-gray-500"><i class="fa-solid fa-image"></i></div>
-                        `}
-                        <div class="flex-grow min-w-0">
-                            <p class="font-medium text-gray-800 truncate">${item.name}</p>
-                            <p class="text-xs text-gray-500">${new Date(item.date).toLocaleDateString('zh-TW')} ${new Date(item.date).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                        <div class="text-right ml-4 flex-shrink-0">
-                            <p class="font-bold primary-text">${item.jpy.toFixed(0).toLocaleString('en-US')} JPY</p>
-                            <p class="text-xs text-gray-500">${(item.jpy * rate).toFixed(0).toLocaleString('en-US')} TWD</p>
-                        </div>
-                        <button onclick="deleteExpense('${item.id}')" class="ml-2 text-red-400 hover:text-red-600 transition duration-150 p-1">
-                            <i class="fa-solid fa-trash-alt text-sm"></i>
-                        </button>
-                    </div>
-                `
-            ).join('');
-            
-            totalJPY = expenses.reduce((sum, item) => sum + item.jpy, 0);
-        }
-
-        totalJPYDisplay.textContent = totalJPY.toFixed(0).toLocaleString('en-US') + ' JPY';
-        totalTWDDisplay.textContent = (totalJPY * rate).toFixed(0).toLocaleString('en-US') + ' TWD';
-    }
-
-    function deleteExpense(id) { /* ... */
-        let expenses = loadData(LS_KEYS.WALLET, []);
-        const initialLength = expenses.length;
-        expenses = expenses.filter(item => item.id !== id);
-
-        if (expenses.length < initialLength) {
-            saveData(LS_KEYS.WALLET, expenses);
-            loadExpenses();
-            alertMessage('刪除成功！', 'primary-bg');
-        }
-    }
-
+    window.handleSaveExp = () => {
+        const n = document.getElementById('en').value, a = document.getElementById('ea').value;
+        if (!n || !a) return;
+        const list = loadData(LS_KEYS.WALLET, []);
+        list.unshift({id: Date.now(), n, a});
+        saveData(LS_KEYS.WALLET, list);
+        switchTab('wallet');
+    };
 
     // ====================================================================
-    // 7. LISTS (清單與備忘錄) 渲染與邏輯 (維持 LocalStorage)
+    // 7. LISTS (Checklist + Memos)
     // ====================================================================
-
     function renderLists(container) {
-        const html = `
-            <div class="space-y-8">
-                <div class="p-4 bg-white rounded-xl shadow-md border-l-4 border-primary/50 text-sm text-gray-700 font-medium">
-                    <i class="fa-solid fa-user-lock mr-2 text-primary"></i> **清單與備忘錄** 僅儲存在本機。
-                </div>
-                <!-- 行前準備清單 (CheckList) -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-primary">
-                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-check-double mr-2"></i> 行前準備 CheckList</h2>
-                    <div id="checklist-container" class="space-y-2">
-                        <!-- 清單項目會在此處渲染 -->
-                    </div>
-                    <div class="mt-4 pt-3 border-t border-gray-100 flex">
-                        <input type="text" id="new-check-item" placeholder="新增自訂項目..." class="flex-grow p-2 border rounded-l-md focus:ring text-gray-700">
-                        <button onclick="addChecklistItem()" class="primary-bg text-white px-3 py-2 rounded-r-md hover:opacity-90"><i class="fa-solid fa-plus"></i></button>
-                    </div>
-                </div>
-
-                <!-- 個人備忘錄 (Memos) -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-secondary">
-                    <h2 class="text-xl font-bold secondary-text mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2"></i> 個人備忘錄</h2>
-                    <textarea id="memo-input" rows="3" placeholder="輸入您的備忘錄，網址會自動轉換為按鈕..." class="w-full p-3 border rounded-md focus:ring text-gray-700"></textarea>
-                    <button onclick="saveMemo()" class="w-full secondary-bg text-white p-2 mt-2 rounded-md font-bold shadow-md hover:opacity-90">儲存備忘</button>
-
-                    <div id="memo-list" class="mt-4 pt-4 border-t border-gray-100 space-y-3">
-                        <!-- 備忘錄列表會在此處渲染 -->
-                    </div>
-                </div>
-            </div>
-        `;
-        container.innerHTML = html;
-        loadChecklist();
-        loadMemos();
-    }
-
-    // [LISTS 相關的 JS 函數 (loadChecklist, toggleChecklistItem, addChecklistItem, deleteChecklistItem, saveMemo, loadMemos)]
-    function loadChecklist() { /* ... */
-        const list = loadData(LS_KEYS.CHECKLIST, []);
-        const container = document.getElementById('checklist-container');
-        if (!container) return;
-
-        container.innerHTML = list.map(item => `
-            <div class="flex items-center p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition duration-150">
-                <input type="checkbox" id="check-${item.id}" ${item.checked ? 'checked' : ''} onchange="toggleChecklistItem('${item.id}')" class="w-5 h-5 primary-text rounded-md border-gray-300 focus:ring-primary cursor-pointer">
-                <label for="check-${item.id}" class="ml-3 text-base ${item.checked ? 'line-through text-gray-500' : 'text-gray-800'} flex-grow cursor-pointer">${item.text}</label>
-                <button onclick="deleteChecklistItem('${item.id}')" class="text-red-400 hover:text-red-600 transition duration-150 p-1">
-                    <i class="fa-solid fa-times text-sm"></i>
-                </button>
-            </div>
-        `).join('');
-    }
-
-    function toggleChecklistItem(id) { /* ... */
-        const list = loadData(LS_KEYS.CHECKLIST, []);
-        const item = list.find(i => i.id === id);
-        if (item) {
-            item.checked = !item.checked;
-            saveData(LS_KEYS.CHECKLIST, list);
-            loadChecklist();
-        }
-    }
-
-    function addChecklistItem() { /* ... */
-        const input = document.getElementById('new-check-item');
-        const text = input.value.trim();
-        if (text) {
-            const list = loadData(LS_KEYS.CHECKLIST, []);
-            list.push({ id: crypto.randomUUID(), text, checked: false });
-            saveData(LS_KEYS.CHECKLIST, list);
-            input.value = '';
-            loadChecklist();
-        }
-    }
-
-    function deleteChecklistItem(id) { /* ... */
-        let list = loadData(LS_KEYS.CHECKLIST, []);
-        list = list.filter(item => item.id !== id);
-        saveData(LS_KEYS.CHECKLIST, list);
-        loadChecklist();
-    }
-
-    function saveMemo() { /* ... */
-        const input = document.getElementById('memo-input');
-        const text = input.value.trim();
-        if (text) {
-            saveData(LS_KEYS.MEMOS, [text]);
-            input.value = text;
-            loadMemos();
-            alertMessage('備忘錄已儲存！', 'primary-bg');
-        } else {
-            saveData(LS_KEYS.MEMOS, []);
-            loadMemos();
-        }
-    }
-
-    function loadMemos() { /* ... */
-        const memos = loadData(LS_KEYS.MEMOS, []);
-        const container = document.getElementById('memo-list');
-        const input = document.getElementById('memo-input');
-
-        if (!container || !input) return;
-
-        const currentText = memos[0] || '';
-        input.value = currentText;
-
-        container.innerHTML = '';
-        if (currentText) {
-            const linkRegex = /(https?:\/\/\S+|www\.\S+)/gi;
-            const parts = currentText.split(linkRegex);
-
-            const displayDiv = document.createElement('div');
-            displayDiv.className = 'whitespace-pre-wrap text-gray-700 text-sm';
-
-            parts.forEach(part => {
-                if (part.match(linkRegex)) {
-                    const url = part.startsWith('http') ? part : 'https://' + part;
-                    const linkButton = document.createElement('a');
-                    linkButton.href = url;
-                    linkButton.target = '_blank';
-                    linkButton.className = 'inline-flex items-center text-xs primary-text bg-primary/10 px-2 py-1 rounded-full font-medium hover:bg-primary/20 transition duration-150 mt-1 mr-2';
-                    linkButton.innerHTML = `<i class="fa-solid fa-link mr-1"></i> 點擊連結`;
-                    displayDiv.appendChild(linkButton);
-                } else {
-                    displayDiv.appendChild(document.createTextNode(part));
-                }
-            });
-
-            container.appendChild(displayDiv);
-        } else {
-            container.innerHTML = '<p class="text-center text-gray-500 p-2">目前無備忘內容。</p>';
-        }
-    }
-
-
-    // ====================================================================
-    // 8. INFO (資訊) 渲染函數 (維持不變)
-    // ====================================================================
-
-    function renderInfo(container) {
-        const content = `
+        const items = loadData(LS_KEYS.CHECKLIST, []);
+        const memo = localStorage.getItem(LS_KEYS.MEMOS) || '';
+        container.innerHTML = `
             <div class="space-y-6">
-                <!-- 天氣與緊急連結 -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-blue-500">
-                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-cloud-sun-rain mr-2"></i> 當地天氣與實用連結</h2>
-                    <p class="text-sm text-gray-600 mb-3">查看最新的氣象預報，隨時準備好雨具。</p>
-                    <a href="https://www.jma.go.jp/jma/index.html" target="_blank" class="w-full inline-flex items-center justify-center secondary-bg text-white p-3 rounded-lg font-bold shadow-md hover:opacity-90 transition duration-150">
-                        <i class="fa-solid fa-temperature-low mr-2"></i> 日本氣象廳 (JMA)
-                    </a>
+                <div class="bg-white p-5 rounded-xl shadow">
+                    <h3 class="font-bold mb-4">行前 CheckList</h3>
+                    <div class="space-y-3">
+                        ${items.map(it => `
+                            <div class="flex items-center space-x-3 border-b border-gray-50 pb-2">
+                                <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleC('${it.id}')" class="w-5 h-5 accent-pink-400">
+                                <span class="${it.checked ? 'line-through text-gray-300' : 'text-gray-700'} text-sm">${it.text}</span>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
-
-                <!-- 緊急聯絡資訊 -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-red-500">
-                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-bell mr-2"></i> 緊急聯絡資訊 (日本 沖繩)</h2>
-                    <ul class="space-y-3">
-                        <li class="flex justify-between items-center text-gray-700">
-                            <span>警察 (Police)</span>
-                            <a href="tel:110" class="text-red-500 font-bold primary-bg/10 px-3 py-1 rounded-full hover:bg-red-500/20"><i class="fa-solid fa-phone mr-1"></i> 110</a>
-                        </li>
-                        <li class="flex justify-between items-center text-gray-700">
-                            <span>救護車/火警 (Ambulance/Fire)</span>
-                            <a href="tel:119" class="text-red-500 font-bold primary-bg/10 px-3 py-1 rounded-full hover:bg-red-500/20"><i class="fa-solid fa-phone mr-1"></i> 119</a>
-                        </li>
-                        <li class="flex justify-between items-center text-gray-700">
-                            <span>駐那霸辦事處 (外交部)</span>
-                            <a href="tel:+81988627008" class="text-blue-500 font-bold primary-bg/10 px-3 py-1 rounded-full hover:bg-blue-500/20"><i class="fa-solid fa-phone mr-1"></i> +81-98-862-7008</a>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- 旅遊禁忌與注意事項 -->
-                <div class="bg-card p-5 rounded-xl shadow-lg border-l-4 border-amber-500">
-                    <h2 class="text-xl font-bold primary-text mb-3 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i> 旅遊禁忌與注意事項</h2>
-                    <ul class="list-disc list-inside text-sm text-gray-600 ml-2 space-y-2">
-                        <li><strong>公共場所：：</strong>請勿在街道上邊走邊吃，或在禁菸區吸菸。</li>
-                        <li><strong>海邊防曬：：</strong>沖繩紫外線強，即便不是夏季也需做好防曬措施。</li>
-                        <li><strong>大眾交通：：</strong>那霸市區交通以單軌電車為主，前往北部如水族館需搭乘高速巴士。</li>
-                        <li><strong>出入境：：</strong>嚴禁攜帶未經申報或超過限額的肉製品、水果、動物製品入境日本。</li>
-                        <li><strong>小費文化：：</strong>日本沒有給小費的習慣。</li>
-                    </ul>
+                <div class="bg-white p-5 rounded-xl shadow">
+                    <h3 class="font-bold mb-4 flex items-center text-gray-700"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i>個人備忘錄</h3>
+                    <textarea id="memo-box" oninput="saveM(this.value)" placeholder="在這裡寫下筆記..." class="w-full h-40 p-3 border rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-primary transition-all">${memo}</textarea>
                 </div>
             </div>
         `;
-        container.innerHTML = content;
     }
-
+    window.toggleC = (id) => {
+        const list = loadData(LS_KEYS.CHECKLIST, []);
+        const it = list.find(x => x.id === id);
+        if (it) { it.checked = !it.checked; saveData(LS_KEYS.CHECKLIST, list); renderLists(document.getElementById('app-content')); }
+    };
+    window.saveM = (v) => localStorage.setItem(LS_KEYS.MEMOS, v);
 
     // ====================================================================
-    // 9. 通用工具與啟動 (Utils & Startup)
+    // 8. INFO (資訊分頁 - 完整功能版)
     // ====================================================================
+    function renderInfo(container) {
+        container.innerHTML = `
+            <div class="space-y-6 pb-4 text-sm">
+                <div class="bg-card p-5 rounded-xl shadow border-l-4 border-blue-400">
+                    <h2 class="font-bold primary-text mb-3"><i class="fa-solid fa-cloud-sun mr-2"></i>即時天氣預報</h2>
+                    <a href="https://www.jma.go.jp/bosai/forecast/#area_type=offices&area_code=471000" target="_blank" class="block w-full text-center py-3 secondary-bg text-white rounded-lg font-bold">查看日本氣象廳預報</a>
+                </div>
+                <div class="bg-card p-5 rounded-xl shadow border-l-4 border-green-500">
+                    <h2 class="font-bold text-green-600 mb-3"><i class="fa-solid fa-train-subway mr-2"></i>交通工具</h2>
+                    <ul class="space-y-4">
+                        <li class="flex justify-between items-center"><span>單軌電車 (Yui Rail)</span> <a href="https://www.yui-rail.co.jp/tc/routemap/" target="_blank" class="primary-text underline font-bold">路線圖</a></li>
+                        <li class="flex justify-between items-center"><span>那霸機場官網</span> <a href="https://www.naha-airport.co.jp/zh-hant/" target="_blank" class="primary-text underline font-bold">即時航班</a></li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl shadow border-l-4 border-red-500">
+                    <h2 class="font-bold text-red-600 mb-2"><i class="fa-solid fa-phone-flip mr-2"></i>緊急支援</h2>
+                    <div class="flex justify-between mb-1"><span>警察局 / 救護車</span> <b class="text-red-500">110 / 119</b></div>
+                    <div class="flex justify-between mt-2 pt-2 border-t border-gray-100"><span>駐那霸辦事處</span> <a href="tel:+81988627008" class="font-bold underline text-blue-500">098-862-7008</a></div>
+                </div>
+                <div class="bg-card p-5 rounded-xl shadow border-l-4 border-purple-400">
+                    <h2 class="font-bold text-purple-600 mb-2"><i class="fa-solid fa-language mr-2"></i>生存日語</h2>
+                    <div class="text-xs grid grid-cols-2 gap-3 italic">
+                        <p><b>Sumimasen:</b> 不好意思</p><p><b>Arigato:</b> 謝謝</p>
+                        <p><b>Okaikei:</b> 結帳</p><p><b>Toire:</b> 廁所</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- MODAL & CRUD UTILS ---
+    function cMod(id, title, body, onConfirm) {
+        const m = document.createElement('div'); m.id = id; m.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+        m.innerHTML = `<div class="bg-white p-6 rounded-xl w-full max-w-xs shadow-2xl"><h3 class="font-bold mb-4 border-b pb-2">${title}</h3>${body}<div class="flex justify-end space-x-3 mt-6 border-t pt-4"><button onclick="closeModal('${id}')" class="text-gray-400 text-sm">取消</button><button id="${id}-btn" class="primary-bg text-white px-4 py-1 rounded-lg text-sm">確認</button></div></div>`;
+        document.body.appendChild(m); document.getElementById(`${id}-btn`).onclick = onConfirm;
+    }
+    function closeModal(id) { const el = document.getElementById(id); if(el) el.remove(); }
+    window.closeModal = closeModal;
+
+    window.showAddDayModal = () => {
+        const b = `<input id="my" placeholder="D6" class="w-full p-2 border mb-2 text-sm"><input id="md" placeholder="03/12" class="w-full p-2 border mb-2 text-sm"><input id="mo" type="number" value="${cloudItineraryData.length+1}" class="w-full p-2 border text-sm">`;
+        cMod('ad', '新增行程日', b, () => { firebaseModules.addDoc(getColRef(), { day: document.getElementById('my').value, date: document.getElementById('md').value, order: parseInt(document.getElementById('mo').value), events: [] }); closeModal('ad'); });
+    }
+    window.showEditDayModal = (id, y, d, o) => {
+        const b = `<input id="ey" value="${y}" class="w-full p-2 border mb-2 text-sm"><input id="ed" value="${d}" class="w-full p-2 border mb-2 text-sm"><input id="eo" type="number" value="${o}" class="w-full p-2 border text-sm">`;
+        cMod('ed', '編輯', b, () => { firebaseModules.updateDoc(firebaseModules.doc(getColRef(), id), { day: document.getElementById('ey').value, date: document.getElementById('ed').value, order: parseInt(document.getElementById('eo').value) }); closeModal('ed'); });
+    }
+    window.confirmDelDay = (id) => cMod('dl', '刪除', `<p class="text-sm">確定刪除這天？</p>`, () => { firebaseModules.deleteDoc(firebaseModules.doc(getColRef(), id)); closeModal('dl'); });
     
-    // [新增] 顯示地圖 Modal
-    function showMapModal(locationName, title) {
-        const modal = document.getElementById('map-modal');
-        const mapTitle = document.getElementById('map-modal-title');
-        const externalLink = document.getElementById('map-external-link');
-        const locationText = document.getElementById('map-location-text');
-
-        // 構建 Google Maps App 導航網址 (用於外部連結)
-        // 使用 https scheme 確保在任何瀏覽器/App 中都能開啟
-        const appUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName + ' 沖繩')}`;
-
-        mapTitle.textContent = title;
-        locationText.textContent = locationName;
-        externalLink.href = appUrl;
-
-        modal.classList.remove('hidden', 'opacity-0');
-        modal.classList.add('opacity-100');
+    window.showAddEvModal = (id) => {
+        const b = `<input id="at" placeholder="時間" class="w-full p-2 border mb-2 text-sm"><input id="an" placeholder="活動" class="w-full p-2 border mb-2 text-sm"><input id="al" placeholder="地點" class="w-full p-2 border mb-2 text-sm"><select id="ay" class="w-full p-2 border text-sm"><option value="activity">活動</option><option value="food">美食</option><option value="highlight">提醒</option><option value="sight">景點</option></select>`;
+        cMod('ae', '新增活動', b, () => { const d = cloudItineraryData.find(x => x.docId === id); const events = [...(d.events || []), { time: document.getElementById('at').value, name: document.getElementById('an').value, location: document.getElementById('al').value, type: document.getElementById('ay').value }].sort((a,b)=>a.time.localeCompare(b.time)); firebaseModules.updateDoc(firebaseModules.doc(getColRef(), id), { events }); closeModal('ae'); });
     }
-    
-    // [修正] close modal for consistency
-    function closeModal(id) {
-        const modal = document.getElementById(id);
-        if (modal) {
-            modal.classList.remove('opacity-100');
-            modal.classList.add('opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 300);
-        }
+    window.showEditEventModal = (id, idx) => {
+        const ev = cloudItineraryData.find(d => d.docId === id).events[idx];
+        const b = `<input id="et" value="${ev.time}" class="w-full p-2 border mb-2 text-sm"><input id="en" value="${ev.name}" class="w-full p-2 border mb-2 text-sm"><input id="el" value="${ev.location||''}" class="w-full p-2 border mb-2 text-sm">`;
+        cMod('ee', '編輯活動', b, () => { 
+            const d = cloudItineraryData.find(x => x.docId === id); 
+            const events = [...d.events]; 
+            events[idx] = { ...ev, time: document.getElementById('et').value, name: document.getElementById('en').value, location: document.getElementById('el').value }; 
+            events.sort((a,b)=>a.time.localeCompare(b.time)); 
+            firebaseModules.updateDoc(firebaseModules.doc(getColRef(), id), { events }); 
+            closeModal('ee'); 
+        });
     }
+    window.confirmDelEv = (id, idx, name) => cMod('de', '移除', `<p class="text-sm">確定移除：${name}？</p>`, () => { const d = cloudItineraryData.find(x => x.docId === id); const events = d.events.filter((_, i) => i !== idx); firebaseModules.updateDoc(firebaseModules.doc(getColRef(), id), { events }); closeModal('de'); });
 
-
-    // 顯示 Loading 狀態
-    function showLoading(message = '載入中...') {
-        document.getElementById('loading-message').textContent = message;
-        document.getElementById('loading-modal').classList.remove('hidden');
+    window.showMapModal = (loc, title) => {
+        const m = document.getElementById('map-modal');
+        document.getElementById('map-modal-title').innerText = title;
+        document.getElementById('map-external-link').href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc + ' 沖繩')}`;
+        m.classList.remove('hidden'); setTimeout(() => m.classList.replace('opacity-0', 'opacity-100'), 10);
     }
+    window.closeMapModal = () => { const m = document.getElementById('map-modal'); m.classList.replace('opacity-100', 'opacity-0'); setTimeout(() => m.classList.add('hidden'), 300); }
 
-    // 隱藏 Loading 狀態
-    function hideLoading() {
-        document.getElementById('loading-modal').classList.add('hidden');
-    }
-
-    // 浮動訊息通知 (取代 alert/confirm)
-    function alertMessage(message, bgColorClass = 'primary-bg') {
-        const existingAlert = document.getElementById('floating-alert');
-        if (existingAlert) existingAlert.remove();
-
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'floating-alert';
-        alertDiv.className = `fixed top-4 left-1/2 transform -translate-x-1/2 ${bgColorClass} text-white px-4 py-2 rounded-full shadow-xl z-50 transition-opacity duration-300 opacity-0`;
-        alertDiv.textContent = message;
-
-        document.body.appendChild(alertDiv);
-
-        setTimeout(() => {
-            alertDiv.classList.remove('opacity-0');
-            alertDiv.classList.add('opacity-100');
-        }, 50);
-
-        setTimeout(() => {
-            alertDiv.classList.remove('opacity-100');
-            alertDiv.classList.add('opacity-0');
-            setTimeout(() => alertDiv.remove(), 300);
-        }, 3000);
-    }
-
-    // 啟動後的初始化 (在 Firebase Auth 完成後執行)
-    window.postAuthInit = function() {
+    window.onload = () => {
         initializeStorage();
-
-        // 載入上次停留的 Tab
-        const initialTab = localStorage.getItem(LS_KEYS.CURRENT_TAB) || 'plan';
-        switchTab(initialTab);
+        if (typeof window.initFirebaseAndAuth === 'function') window.initFirebaseAndAuth();
+        switchTab(localStorage.getItem(LS_KEYS.CURRENT_TAB) || 'plan');
     };
-
-
-    // 應用程式啟動入口
-    window.onload = function() {
-        // [修正] 不再等待 initFirebaseAndAuth 完成。先渲染畫面。
-        window.postAuthInit(); 
-
-        if (typeof window.initFirebaseAndAuth === 'function') {
-            // 在背景開始嘗試初始化 Firebase 和認證
-            window.initFirebaseAndAuth(); 
-        } else {
-            console.error("Firebase Initialization function not found.");
-            // 如果連模組都沒載入，也標記 Auth Ready 避免 Plan 頁面卡住。
-            window.isAuthReady = true; 
-        }
-    };
-
 </script>
-
-<!-- 在 HTML 底部加入一個隱藏的訊息容器，用於取代原生的 alert/confirm -->
-<div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center">
-    <!-- 訊息內容會動態加入 -->
-</div>
-
 </body>
 </html>
